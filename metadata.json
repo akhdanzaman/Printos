@@ -1,0 +1,6 @@
+{
+  "name": "PrintOS — 3D Printing Business Workspace",
+  "description": "Trello-inspired 3D printing business management platform for product catalog, print production, filament inventory, tasks, R&D notes, and Indonesian Rupiah (Rp) financial tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
