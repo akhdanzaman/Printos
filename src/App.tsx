@@ -55,6 +55,7 @@ import {
 import { OverviewBoard } from './components/OverviewBoard';
 import { ProductCatalogBoard } from './components/ProductCatalogBoard';
 import { ContentStudioBoard } from './components/ContentStudioBoard';
+import { HermesBridgePanel } from './components/content/HermesBridgePanel';
 import { TasksCalendarBoard } from './components/TasksCalendarBoard';
 import { ProductionFleetBoard } from './components/ProductionFleetBoard';
 import { InventoryBoard } from './components/InventoryBoard';
@@ -77,6 +78,7 @@ import {
   Menu,
   Moon,
   Plus,
+  Plug,
   Printer,
   RotateCcw,
   Search,
@@ -172,6 +174,7 @@ export default function App() {
     message: string;
   }>({ type: 'idle', message: '' });
 
+  const [hermesOpen, setHermesOpen] = useState(false);
   const [sheetConfirmModal, setSheetConfirmModal] = useState<
     | null
     | {
@@ -1140,6 +1143,15 @@ export default function App() {
               </button>
             </div>
 
+            <button
+              type="button"
+              onClick={() => setHermesOpen(true)}
+              className="w-full px-2 py-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-900/60 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Plug className="w-3 h-3" />
+              Hermes Bridge
+            </button>
+
             {/* Spreadsheet Sync Service (below Backup JSON button) */}
             <div className="pt-2.5 border-t border-orange-100/80 dark:border-slate-800 space-y-2">
               <div className="flex items-center justify-between px-0.5">
@@ -1704,6 +1716,17 @@ export default function App() {
         )}
 
         {/* Mandatory User Confirmation Dialog for Spreadsheet Save & Fetch Operations */}
+        {hermesOpen && (
+          <HermesBridgePanel
+            state={state}
+            onClose={() => setHermesOpen(false)}
+            onReplace={(next) => {
+              setState(next);
+              setHermesOpen(false);
+            }}
+          />
+        )}
+
         {sheetConfirmModal && (
           <div
             role="dialog"

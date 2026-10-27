@@ -3183,11 +3183,11 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
                 onClick={() => {
                   onSavePublication({
                     ...confirmingPub.pub,
-                    status: 'Sudah Tayang',
+                    status: 'Published',
                     actualPublishedAtJakarta: confirmingPub.actualDateTimeWib.trim(),
                     actualPostUrl: confirmingPub.actualUrl.trim(),
                   });
-                  onMoveContentStage(confirmingPub.pub.contentItemId, 'Terbit');
+                  onMoveContentStage(confirmingPub.pub.contentItemId, 'Published');
                   setConfirmingPub(null);
                 }}
                 className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg"

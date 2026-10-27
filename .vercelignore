@@ -4,3 +4,5 @@ dist/
 .aistudio/
 .env*
 *.log
+
+.data/
