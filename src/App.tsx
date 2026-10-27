@@ -3,48 +3,68 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActiveBoardId,
+  ContentItem,
+  ContentProject,
+  ContentPublication,
+  ContentSeries,
+  ContentSponsorship,
+  ContentStage,
+  CreatorCapacityConfig,
   CustomerOrder,
   FilamentSpool,
   FinancialRecord,
+  MetricSnapshot,
   OrderStage,
   PrinterMachine,
   PrintJob,
   PrintOSState,
   Product,
+  ProductionSession,
   ProductionStage,
   ProductStage,
   ResearchNote,
   ResearchStage,
   TaskItem,
   TaskStage,
+  WeeklyContentReview,
 } from './types/printos';
 import { INITIAL_PRINTOS_STATE } from './data/seedData';
 import {
   computeFilamentStage,
-  formatRupiah,
   parseSpreadsheetIdFromUrl,
 } from './utils/calculations';
 import {
+  getJakartaDateIso,
+  migratePrintOSState,
+  syncContentTasksIdempotent,
+  syncSponsorshipToFinancialsIdempotent,
+} from './utils/contentStudio';
+import {
+  checkRemoteSpreadsheetRevision,
   fetchWorkspaceFromSpreadsheet,
   getAccessToken,
   googleSignIn,
   initAuth,
   logoutGoogle,
   saveWorkspaceToSpreadsheet,
+  SpreadsheetRevisionEntry,
 } from './services/spreadsheetService';
 import { OverviewBoard } from './components/OverviewBoard';
 import { ProductCatalogBoard } from './components/ProductCatalogBoard';
+import { ContentStudioBoard } from './components/ContentStudioBoard';
 import { TasksCalendarBoard } from './components/TasksCalendarBoard';
 import { ProductionFleetBoard } from './components/ProductionFleetBoard';
 import { InventoryBoard } from './components/InventoryBoard';
 import { ResearchBoard } from './components/ResearchBoard';
 import { BusinessFinanceBoard } from './components/BusinessFinanceBoard';
 import {
+  AlertTriangle,
   Box,
   CheckSquare,
+  Clapperboard,
   CloudDownload,
   CloudUpload,
   DollarSign,
@@ -60,70 +80,57 @@ import {
   Printer,
   RotateCcw,
   Search,
+  Smartphone,
   Sun,
+  Upload,
   X,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'printos_workspace_state_v1';
+const CORRUPT_BACKUP_KEY = 'printos_corrupt_recovery_raw_v1';
 const THEME_KEY = 'printos_theme_v1';
 const SPREADSHEET_URL_KEY = 'printos_spreadsheet_url_v1';
 
 export default function App() {
+  const [corruptStorageAlert, setCorruptStorageAlert] = useState<{
+    errorMessage: string;
+    rawPayload: string;
+  } | null>(null);
+
+  const [storageWriteError, setStorageWriteError] = useState<string>('');
+
   const [state, setState] = useState<PrintOSState>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && Array.isArray(parsed.products) && Array.isArray(parsed.tasks)) {
-          // Ensure every product has stockQuantity populated even if loaded from an older localStorage snapshot
-          const seedMap = new Map(
-            INITIAL_PRINTOS_STATE.products.map((p) => [p.id, p.stockQuantity])
-          );
-          parsed.products = parsed.products.map((p: Product) => ({
-            ...p,
-            stockQuantity:
-              typeof p.stockQuantity === 'number'
-                ? p.stockQuantity
-                : seedMap.get(p.id) ??
-                  (p.stage === 'Published' ? 6 : p.stage === 'Ready to Sell' ? 4 : 0),
-          }));
-
-          // Ensure every task has plannedStartDate, actualStartDate, and actualEndDate populated
-          const seedTaskMap = new Map(
-            INITIAL_PRINTOS_STATE.tasks.map((t) => [t.id, t])
-          );
-          parsed.tasks = parsed.tasks.map((t: TaskItem) => {
-            const seedTask = seedTaskMap.get(t.id);
-            return {
-              ...t,
-              plannedStartDate:
-                t.plannedStartDate ||
-                seedTask?.plannedStartDate ||
-                t.dueDate ||
-                '2026-10-22',
-              dueDate: t.dueDate || seedTask?.dueDate || '2026-10-24',
-              actualStartDate:
-                typeof t.actualStartDate === 'string'
-                  ? t.actualStartDate
-                  : seedTask?.actualStartDate ??
-                    (t.stage === 'In Progress' ||
-                    t.stage === 'Review' ||
-                    t.stage === 'Completed'
-                      ? t.dueDate
-                      : ''),
-              actualEndDate:
-                typeof t.actualEndDate === 'string'
-                  ? t.actualEndDate
-                  : seedTask?.actualEndDate ?? (t.stage === 'Completed' ? t.dueDate : ''),
-            };
-          });
-          return parsed;
+      if (saved !== null && saved !== '') {
+        const migration = migratePrintOSState(saved, INITIAL_PRINTOS_STATE);
+        if (migration.status === 'ok' && migration.state) {
+          return migration.state;
         }
+        // Corrupt data detected: preserve raw string in recovery slot and do NOT silently overwrite STORAGE_KEY
+        try {
+          localStorage.setItem(CORRUPT_BACKUP_KEY, saved);
+        } catch {
+          // Ignore quota error when saving backup
+        }
+        setTimeout(() => {
+          setCorruptStorageAlert({
+            errorMessage:
+              migration.errorMessage ||
+              'Local storage data (localStorage) is corrupted or invalid.',
+            rawPayload: saved,
+          });
+        }, 0);
+        return structuredClone(INITIAL_PRINTOS_STATE);
       }
-    } catch {
-      // Fallback to initial seed data
+    } catch (err: any) {
+      setTimeout(() => {
+        setStorageWriteError(
+          `Failed to read localStorage: ${err?.message || 'Storage access is restricted.'}`
+        );
+      }, 0);
     }
-    return INITIAL_PRINTOS_STATE;
+    return structuredClone(INITIAL_PRINTOS_STATE);
   });
 
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -139,6 +146,15 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
   const [selectedProductForModal, setSelectedProductForModal] = useState<Product | null>(null);
   const [openNewTaskModalTrigger, setOpenNewTaskModalTrigger] = useState<boolean>(false);
+  const [openQuickCaptureTrigger, setOpenQuickCaptureTrigger] = useState<boolean>(false);
+
+  // JSON Import / Restore Preview Modal State
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [jsonRestorePreview, setJsonRestorePreview] = useState<{
+    fileName: string;
+    migratedState: PrintOSState;
+    migratedFromVersion: number;
+  } | null>(null);
 
   // Google Spreadsheet Sync State
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(() => {
@@ -155,14 +171,23 @@ export default function App() {
     type: 'idle' | 'success' | 'error';
     message: string;
   }>({ type: 'idle', message: '' });
+
   const [sheetConfirmModal, setSheetConfirmModal] = useState<
     | null
-    | { mode: 'save' }
+    | {
+        mode: 'save';
+        isStaleWarning?: boolean;
+        remoteRevisionId?: string;
+        remoteSavedAt?: string;
+      }
     | {
         mode: 'fetch';
         fetchedState: PrintOSState;
         spreadsheetTitle: string;
         syncedAt: string;
+        revisionId?: string;
+        revisions: SpreadsheetRevisionEntry[];
+        selectedRevisionId: string;
       }
   >(null);
 
@@ -188,13 +213,21 @@ export default function App() {
     }
   }, [spreadsheetUrl]);
 
+  // Persist workspace to localStorage ONLY when corruptStorageAlert is not active
+  // so corrupt local data is never overwritten without explicit user consent!
   useEffect(() => {
+    if (corruptStorageAlert) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // Ignore storage quota errors
+      if (storageWriteError) setStorageWriteError('');
+    } catch (err: any) {
+      setStorageWriteError(
+        `Failed to save changes to localStorage (${
+          err?.name || 'QuotaExceededError'
+        }). Use the Backup JSON button so your data is not lost.`
+      );
     }
-  }, [state]);
+  }, [state, corruptStorageAlert]);
 
   useEffect(() => {
     try {
@@ -209,7 +242,7 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // --- Connected State Handlers ---
+  // --- Connected 3D Printing State Handlers ---
 
   const handleSaveProduct = (product: Product) => {
     setState((prev) => {
@@ -238,7 +271,7 @@ export default function App() {
       sku: `${product.sku}-COPY`,
       stockQuantity: product.stockQuantity ?? 0,
       unitsSold: 0,
-      updatedAt: new Date().toISOString().slice(0, 10),
+      updatedAt: getJakartaDateIso(),
     };
     setState((prev) => ({
       ...prev,
@@ -251,7 +284,7 @@ export default function App() {
       ...prev,
       products: prev.products.map((p) =>
         p.id === productId
-          ? { ...p, stage: newStage, updatedAt: new Date().toISOString().slice(0, 10) }
+          ? { ...p, stage: newStage, updatedAt: getJakartaDateIso() }
           : p
       ),
     }));
@@ -265,7 +298,7 @@ export default function App() {
           ? {
               ...p,
               stockQuantity: Math.max(0, (p.stockQuantity ?? 0) + delta),
-              updatedAt: new Date().toISOString().slice(0, 10),
+              updatedAt: getJakartaDateIso(),
             }
           : p
       ),
@@ -365,7 +398,7 @@ export default function App() {
           ? [
               {
                 id: `fin-${Date.now()}`,
-                date: new Date().toISOString().slice(0, 10),
+                date: getJakartaDateIso(),
                 title: `Spool Purchase: ${spool.brand} ${spool.name} (${spool.material})`,
                 type: 'Expense' as const,
                 category: 'Filament Purchase' as const,
@@ -450,7 +483,7 @@ export default function App() {
                 ? {
                     ...p,
                     stockQuantity: Math.max(0, (p.stockQuantity ?? 0) + targetJob.batchQuantity),
-                    updatedAt: new Date().toISOString().slice(0, 10),
+                    updatedAt: getJakartaDateIso(),
                   }
                 : p
             )
@@ -556,12 +589,246 @@ export default function App() {
               ...p,
               productionCostRp: costRp,
               sellingPriceRp: priceRp,
-              updatedAt: new Date().toISOString().slice(0, 10),
+              updatedAt: getJakartaDateIso(),
             }
           : p
       ),
     }));
   };
+
+  // --- Connected Content Studio State Handlers ---
+
+  const handleSaveContentItem = (item: ContentItem) => {
+    setState((prev) => {
+      const list = prev.contentItems || [];
+      const exists = list.some((c) => c.id === item.id);
+      return {
+        ...prev,
+        contentItems: exists
+          ? list.map((c) => (c.id === item.id ? item : c))
+          : [item, ...list],
+      };
+    });
+  };
+
+  const handleDeleteContentItem = (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      contentItems: (prev.contentItems || []).filter((c) => c.id !== id),
+      contentPublications: (prev.contentPublications || []).filter(
+        (p) => p.contentItemId !== id
+      ),
+    }));
+  };
+
+  const handleMoveContentStage = (id: string, stage: ContentStage) => {
+    setState((prev) => ({
+      ...prev,
+      contentItems: (prev.contentItems || []).map((c) =>
+        c.id === id ? { ...c, stage, updatedAt: getJakartaDateIso() } : c
+      ),
+    }));
+  };
+
+  const handleReorderContentItem = (id: string, direction: 'up' | 'down') => {
+    setState((prev) => {
+      const list = [...(prev.contentItems || [])].sort(
+        (a, b) => a.orderIndex - b.orderIndex
+      );
+      const idx = list.findIndex((c) => c.id === id);
+      if (idx === -1) return prev;
+      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= list.length) return prev;
+      const tempOrder = list[idx].orderIndex;
+      list[idx] = { ...list[idx], orderIndex: list[swapIdx].orderIndex };
+      list[swapIdx] = { ...list[swapIdx], orderIndex: tempOrder };
+      return { ...prev, contentItems: list };
+    });
+  };
+
+  const handleSaveProject = (project: ContentProject) => {
+    setState((prev) => {
+      const list = prev.contentProjects || [];
+      const exists = list.some((p) => p.id === project.id);
+      return {
+        ...prev,
+        contentProjects: exists
+          ? list.map((p) => (p.id === project.id ? project : p))
+          : [...list, project],
+      };
+    });
+  };
+
+  const handleSaveSeries = (series: ContentSeries) => {
+    setState((prev) => {
+      const list = prev.contentSeries || [];
+      const exists = list.some((s) => s.id === series.id);
+      return {
+        ...prev,
+        contentSeries: exists
+          ? list.map((s) => (s.id === series.id ? series : s))
+          : [...list, series],
+      };
+    });
+  };
+
+  const handleSavePublication = (pub: ContentPublication) => {
+    setState((prev) => {
+      const list = prev.contentPublications || [];
+      const exists = list.some((p) => p.id === pub.id);
+      return {
+        ...prev,
+        contentPublications: exists
+          ? list.map((p) => (p.id === pub.id ? pub : p))
+          : [pub, ...list],
+      };
+    });
+  };
+
+  const handleDeletePublication = (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      contentPublications: (prev.contentPublications || []).filter(
+        (p) => p.id !== id
+      ),
+    }));
+  };
+
+  const handleSaveMetricSnapshot = (snapshot: MetricSnapshot) => {
+    setState((prev) => {
+      const list = prev.metricSnapshots || [];
+      const exists = list.some(
+        (s) =>
+          s.id === snapshot.id ||
+          (s.publicationId === snapshot.publicationId &&
+            s.window === snapshot.window)
+      );
+      return {
+        ...prev,
+        metricSnapshots: exists
+          ? list.map((s) =>
+              s.id === snapshot.id ||
+              (s.publicationId === snapshot.publicationId &&
+                s.window === snapshot.window)
+                ? snapshot
+                : s
+            )
+          : [snapshot, ...list],
+      };
+    });
+  };
+
+  const handleSaveProductionSession = (session: ProductionSession) => {
+    setState((prev) => {
+      const list = prev.productionSessions || [];
+      const exists = list.some((s) => s.id === session.id);
+      const nextSessions = exists
+        ? list.map((s) => (s.id === session.id ? session : s))
+        : [session, ...list];
+
+      // Automatically keep tasks in sync idempotently
+      const synced = syncContentTasksIdempotent(
+        prev.tasks,
+        nextSessions,
+        prev.contentItems || []
+      );
+
+      return {
+        ...prev,
+        productionSessions: nextSessions,
+        tasks: synced.tasks,
+      };
+    });
+  };
+
+  const handleDeleteProductionSession = (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      productionSessions: (prev.productionSessions || []).filter(
+        (s) => s.id !== id
+      ),
+      tasks: prev.tasks.filter((t) => t.sourceRefId !== `session:${id}`),
+    }));
+  };
+
+  const handleSyncSessionsToTasks = () => {
+    const res = syncContentTasksIdempotent(
+      state.tasks,
+      state.productionSessions || [],
+      state.contentItems || []
+    );
+    setState((prev) => ({
+      ...prev,
+      tasks: res.tasks,
+    }));
+    return { createdCount: res.createdCount, updatedCount: res.updatedCount };
+  };
+
+  const handleSaveSponsorship = (deal: ContentSponsorship) => {
+    setState((prev) => {
+      const list = prev.contentSponsorships || [];
+      const exists = list.some((d) => d.id === deal.id);
+      const nextDeals = exists
+        ? list.map((d) => (d.id === deal.id ? deal : d))
+        : [deal, ...list];
+
+      const syncedLedger = syncSponsorshipToFinancialsIdempotent(
+        prev.financials,
+        nextDeals,
+        getJakartaDateIso()
+      );
+
+      return {
+        ...prev,
+        contentSponsorships: nextDeals,
+        financials: syncedLedger.financials,
+      };
+    });
+  };
+
+  const handleDeleteSponsorship = (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      contentSponsorships: (prev.contentSponsorships || []).filter(
+        (d) => d.id !== id
+      ),
+    }));
+  };
+
+  const handleSyncSponsorshipsToLedger = () => {
+    const res = syncSponsorshipToFinancialsIdempotent(
+      state.financials,
+      state.contentSponsorships || [],
+      getJakartaDateIso()
+    );
+    setState((prev) => ({
+      ...prev,
+      financials: res.financials,
+    }));
+    return { addedCount: res.addedCount, updatedCount: res.updatedCount };
+  };
+
+  const handleSaveWeeklyReview = (review: WeeklyContentReview) => {
+    setState((prev) => {
+      const list = prev.weeklyReviews || [];
+      const exists = list.some((r) => r.id === review.id);
+      return {
+        ...prev,
+        weeklyReviews: exists
+          ? list.map((r) => (r.id === review.id ? review : r))
+          : [review, ...list],
+      };
+    });
+  };
+
+  const handleSaveCapacityConfig = (config: CreatorCapacityConfig) => {
+    setState((prev) => ({
+      ...prev,
+      creatorCapacity: config,
+    }));
+  };
+
+  // --- Backup JSON, Import JSON & Corrupt Storage Handlers ---
 
   const handleExportWorkspaceJson = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], {
@@ -570,64 +837,122 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `printos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `printos-backup-${getJakartaDateIso()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleResetDemoWorkspace = () => {
-    setState(INITIAL_PRINTOS_STATE);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_PRINTOS_STATE));
+  const handleImportJsonFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rawText = String(reader.result || '');
+      const migration = migratePrintOSState(rawText, INITIAL_PRINTOS_STATE);
+      if (migration.status === 'corrupt' || !migration.state) {
+        setSheetStatus({
+          type: 'error',
+          message:
+            migration.errorMessage ||
+            'Invalid JSON file. Your local data was not overwritten.',
+        });
+        return;
+      }
+      setJsonRestorePreview({
+        fileName: file.name,
+        migratedState: migration.state,
+        migratedFromVersion: migration.migratedFromVersion,
+      });
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
-  const navItems: {
-    id: ActiveBoardId;
-    label: string;
-    count?: string | number;
-    icon: React.ComponentType<{ className?: string }>;
+  const handleResetDemoWorkspace = () => {
+    const fresh = structuredClone(INITIAL_PRINTOS_STATE);
+    setCorruptStorageAlert(null);
+    setState(fresh);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const navSections: {
+    title: string;
+    items: {
+      id: ActiveBoardId;
+      label: string;
+      count?: string | number;
+      icon: React.ComponentType<{ className?: string }>;
+    }[];
   }[] = [
     {
-      id: 'overview',
-      label: 'Workspace Overview',
-      icon: LayoutDashboard,
+      title: 'Workspace',
+      items: [
+        {
+          id: 'overview',
+          label: 'Workspace Overview',
+          icon: LayoutDashboard,
+        },
+      ],
     },
     {
-      id: 'catalog',
-      label: 'Product Catalog',
-      count: state.products.length,
-      icon: Box,
+      title: '3D Printing & Workshop',
+      items: [
+        {
+          id: 'catalog',
+          label: 'Product Catalog',
+          count: state.products.length,
+          icon: Box,
+        },
+        {
+          id: 'production',
+          label: 'Production & Fleet',
+          count: state.printJobs.filter((j) => j.stage !== 'Completed').length,
+          icon: Printer,
+        },
+        {
+          id: 'inventory',
+          label: 'Filament Inventory',
+          count: state.filaments.length,
+          icon: Layers,
+        },
+        {
+          id: 'research',
+          label: 'Research & Profiles',
+          count: state.researchNotes.length,
+          icon: FlaskConical,
+        },
+      ],
     },
     {
-      id: 'tasks',
-      label: 'Tasks & Schedule',
-      count: state.tasks.filter((t) => t.stage !== 'Completed').length,
-      icon: CheckSquare,
-    },
-    {
-      id: 'production',
-      label: 'Production & Fleet',
-      count: state.printJobs.filter((j) => j.stage !== 'Completed').length,
-      icon: Printer,
-    },
-    {
-      id: 'inventory',
-      label: 'Filament Inventory',
-      count: state.filaments.length,
-      icon: Layers,
-    },
-    {
-      id: 'research',
-      label: 'Research & Profiles',
-      count: state.researchNotes.length,
-      icon: FlaskConical,
-    },
-    {
-      id: 'business',
-      label: 'Business & Finance (Rp)',
-      count: state.orders.length,
-      icon: DollarSign,
+      title: 'Creator & Business',
+      items: [
+        {
+          id: 'content',
+          label: 'Content Studio',
+          count: state.contentItems?.length || 0,
+          icon: Clapperboard,
+        },
+        {
+          id: 'tasks',
+          label: 'Tasks & Schedule',
+          count: state.tasks.filter((t) => t.stage !== 'Completed').length,
+          icon: CheckSquare,
+        },
+        {
+          id: 'business',
+          label: 'Business & Finance (Rp)',
+          count: state.orders.length,
+          icon: DollarSign,
+        },
+      ],
     },
   ];
+
+  const navItems = navSections.flatMap((section) => section.items);
 
   const activeBoardMeta = navItems.find((item) => item.id === activeBoard) || navItems[0];
 
@@ -656,7 +981,7 @@ export default function App() {
       checklist: [
         { id: `chk-${Date.now()}-1`, text: 'Export manifold 3MF/STL mesh', completed: false },
       ],
-      updatedAt: new Date().toISOString().slice(0, 10),
+      updatedAt: getJakartaDateIso(),
     });
     setActiveBoard('catalog');
   };
@@ -690,7 +1015,7 @@ export default function App() {
                     PrintOS
                   </span>
                   <span className="text-[11px] font-medium text-orange-600 dark:text-amber-400">
-                    3D Maker Studio
+                    Maker & Creator Workspace
                   </span>
                 </div>
               </button>
@@ -705,47 +1030,54 @@ export default function App() {
               </button>
             </div>
 
-            {/* Boards Navigation List */}
-            <nav aria-label="Primary Boards" className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeBoard === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveBoard(item.id);
-                      setMobileNavOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-colors ${
-                      isActive
-                        ? 'bg-amber-100/90 text-amber-950 dark:bg-amber-500 dark:text-slate-950 font-bold'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-orange-50/70 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2.5 truncate">
-                      <Icon
-                        className={`w-4 h-4 shrink-0 ${
-                          isActive ? 'text-orange-600 dark:text-slate-950' : 'text-slate-400'
-                        }`}
-                      />
-                      <span className="truncate">{item.label}</span>
-                    </span>
-                    {item.count !== undefined && (
-                      <span
-                        className={`tabular-nums text-[11px] font-semibold ${
+            {/* Grouped Boards Navigation List */}
+            <nav aria-label="Primary Boards" className="space-y-4">
+              {navSections.map((section) => (
+                <div key={section.title} className="space-y-1">
+                  <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    {section.title}
+                  </div>
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeBoard === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveBoard(item.id);
+                          setMobileNavOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
                           isActive
-                            ? 'text-orange-700 dark:text-slate-900'
-                            : 'text-slate-400 dark:text-slate-500'
+                            ? 'bg-amber-100/90 text-amber-950 dark:bg-amber-500 dark:text-slate-950 font-bold'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-orange-50/70 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
                         }`}
                       >
-                        {item.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                        <span className="flex items-center gap-2.5 truncate">
+                          <Icon
+                            className={`w-4 h-4 shrink-0 ${
+                              isActive ? 'text-orange-600 dark:text-slate-950' : 'text-slate-400'
+                            }`}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </span>
+                        {item.count !== undefined && (
+                          <span
+                            className={`tabular-nums text-[11px] font-semibold ${
+                              isActive
+                                ? 'text-orange-700 dark:text-slate-900'
+                                : 'text-slate-400 dark:text-slate-500'
+                            }`}
+                          >
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </nav>
           </div>
 
@@ -773,19 +1105,35 @@ export default function App() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportJsonFileChange}
+              className="hidden"
+            />
+
+            <div className="grid grid-cols-3 gap-1.5">
               <button
                 type="button"
                 onClick={handleExportWorkspaceJson}
-                className="px-2.5 py-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                className="px-2 py-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center justify-center gap-1 transition-colors"
               >
                 <Download className="w-3 h-3" />
                 Backup JSON
               </button>
               <button
                 type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-2 py-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center justify-center gap-1 transition-colors"
+              >
+                <Upload className="w-3 h-3" />
+                Import JSON
+              </button>
+              <button
+                type="button"
                 onClick={handleResetDemoWorkspace}
-                className="px-2.5 py-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                className="px-2 py-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center justify-center gap-1 transition-colors"
               >
                 <RotateCcw className="w-3 h-3" />
                 Reset Seed
@@ -838,7 +1186,7 @@ export default function App() {
                         setNeedsGoogleAuth(false);
                         setSheetStatus({
                           type: 'success',
-                          message: 'Google Sheets account connected.',
+                          message: 'Google Sheets account connected (Private OAuth in-memory).',
                         });
                       }
                     } catch (err: any) {
@@ -899,7 +1247,7 @@ export default function App() {
                 <button
                   type="button"
                   disabled={isSyncingSheet !== false}
-                  onClick={() => {
+                  onClick={async () => {
                     if (!parseSpreadsheetIdFromUrl(spreadsheetUrl)) {
                       setSheetStatus({
                         type: 'error',
@@ -908,7 +1256,30 @@ export default function App() {
                       return;
                     }
                     setSheetStatus({ type: 'idle', message: '' });
-                    setSheetConfirmModal({ mode: 'save' });
+                    let isStale = false;
+                    let remoteRev: string | undefined;
+                    let remoteSavedAt: string | undefined;
+                    try {
+                      const token = await getAccessToken();
+                      if (token) {
+                        const check = await checkRemoteSpreadsheetRevision(
+                          spreadsheetUrl,
+                          state.syncMeta?.lastSavedRevisionId,
+                          token
+                        );
+                        isStale = check.isStale;
+                        remoteRev = check.remoteRevisionId;
+                        remoteSavedAt = check.remoteSavedAt;
+                      }
+                    } catch {
+                      // Non-blocking precheck
+                    }
+                    setSheetConfirmModal({
+                      mode: 'save',
+                      isStaleWarning: isStale,
+                      remoteRevisionId: remoteRev,
+                      remoteSavedAt,
+                    });
                   }}
                   className="px-2.5 py-1.5 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
                 >
@@ -941,6 +1312,10 @@ export default function App() {
                         fetchedState: res.state,
                         spreadsheetTitle: res.spreadsheetTitle,
                         syncedAt: res.syncedAt,
+                        revisionId: res.revisionId,
+                        revisions: res.revisions,
+                        selectedRevisionId:
+                          res.revisionId || res.revisions[0]?.revisionId || 'latest',
                       });
                     } catch (err: any) {
                       setSheetStatus({
@@ -985,8 +1360,8 @@ export default function App() {
 
         {/* Main Workspace Viewport */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* SaaS Top Bar Contract: Breadcrumb on Left — Quick Filter/Search — Primary Action on Right */}
-          <header className="flex items-center justify-between gap-4 px-6 py-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-20">
+          {/* Top Bar: Breadcrumb on Left — Visible Search on Mobile & Desktop — Quick Actions on Right */}
+          <header className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-20">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
@@ -1007,32 +1382,114 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="relative hidden sm:block">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Search visible on BOTH mobile & desktop */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={globalSearch}
                   onChange={(e) => setGlobalSearch(e.target.value)}
-                  placeholder="Filter cards across board..."
+                  placeholder="Search products, tasks, content..."
                   aria-label="Global workspace search"
-                  className="pl-8 pr-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-amber-500 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none w-52"
+                  className="pl-7 pr-2.5 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-amber-500 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none w-36 sm:w-52"
                 />
               </div>
 
               <button
                 type="button"
+                onClick={() => {
+                  setOpenQuickCaptureTrigger(true);
+                  setActiveBoard('content');
+                }}
+                className="px-2.5 sm:px-3 py-2 text-xs font-semibold bg-amber-100 hover:bg-amber-200 text-amber-950 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-orange-600" />
+                <span className="hidden sm:inline">Quick Capture</span>
+                <span className="sm:hidden">+ Idea</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={triggerNewProductModal}
-                className="px-3.5 py-2 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                className="px-3 py-2 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Quick Add Product
+                <span className="hidden sm:inline">Quick Add Product</span>
+                <span className="sm:hidden">+ Product</span>
               </button>
             </div>
           </header>
 
+          {/* Corrupt Storage Protection Banner (Never overwrites corrupt data silently) */}
+          {corruptStorageAlert && (
+            <div
+              role="alert"
+              className="mx-6 mt-4 p-4 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-300 dark:border-red-800 text-xs text-red-900 dark:text-red-200 space-y-2"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-bold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  Data Protection Warning: Corrupted Local Storage (localStorage) Detected
+                </span>
+              </div>
+              <p>
+                {corruptStorageAlert.errorMessage} For your safety, PrintOS <strong>did not overwrite</strong> your local storage with demo data. A raw copy of the corrupted data has been preserved in recovery key <code>{CORRUPT_BACKUP_KEY}</code>.
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob([corruptStorageAlert.rawPayload], {
+                      type: 'text/plain;charset=utf-8',
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'printos-corrupt-recovery-raw.txt';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-3 py-1.5 font-semibold bg-white dark:bg-slate-900 border border-red-300 rounded-lg"
+                >
+                  Download Raw Data (.txt)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 font-semibold bg-amber-500 text-slate-950 rounded-lg"
+                >
+                  Restore from JSON Backup
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetDemoWorkspace}
+                  className="px-3 py-1.5 font-medium text-red-700 dark:text-red-300 hover:underline"
+                >
+                  Confirm Reset to Seed Data
+                </button>
+              </div>
+            </div>
+          )}
+
+          {storageWriteError && (
+            <div
+              role="alert"
+              className="mx-6 mt-4 p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-950 flex items-center justify-between"
+            >
+              <span>{storageWriteError}</span>
+              <button
+                type="button"
+                onClick={() => setStorageWriteError('')}
+                className="text-slate-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Board Content Area */}
-          <main className="flex-1 p-6 max-w-[1600px] w-full mx-auto">
+          <main className="flex-1 p-4 sm:p-6 max-w-[1600px] w-full mx-auto">
             {activeBoard === 'overview' && (
               <OverviewBoard
                 products={state.products}
@@ -1068,6 +1525,43 @@ export default function App() {
                 onDuplicateProduct={handleDuplicateProduct}
                 onMoveProductStage={handleMoveProductStage}
                 onAdjustProductStock={handleAdjustProductStock}
+              />
+            )}
+
+            {activeBoard === 'content' && (
+              <ContentStudioBoard
+                products={state.products}
+                capacity={
+                  state.creatorCapacity || INITIAL_PRINTOS_STATE.creatorCapacity!
+                }
+                projects={state.contentProjects || []}
+                seriesList={state.contentSeries || []}
+                contentItems={state.contentItems || []}
+                publications={state.contentPublications || []}
+                metricSnapshots={state.metricSnapshots || []}
+                productionSessions={state.productionSessions || []}
+                sponsorships={state.contentSponsorships || []}
+                weeklyReviews={state.weeklyReviews || []}
+                globalSearch={globalSearch}
+                openQuickCaptureTrigger={openQuickCaptureTrigger}
+                onClearQuickCaptureTrigger={() => setOpenQuickCaptureTrigger(false)}
+                onSaveContentItem={handleSaveContentItem}
+                onDeleteContentItem={handleDeleteContentItem}
+                onMoveContentStage={handleMoveContentStage}
+                onReorderContentItem={handleReorderContentItem}
+                onSaveProject={handleSaveProject}
+                onSaveSeries={handleSaveSeries}
+                onSavePublication={handleSavePublication}
+                onDeletePublication={handleDeletePublication}
+                onSaveMetricSnapshot={handleSaveMetricSnapshot}
+                onSaveProductionSession={handleSaveProductionSession}
+                onDeleteProductionSession={handleDeleteProductionSession}
+                onSyncSessionsToTasks={handleSyncSessionsToTasks}
+                onSaveSponsorship={handleSaveSponsorship}
+                onDeleteSponsorship={handleDeleteSponsorship}
+                onSyncSponsorshipsToLedger={handleSyncSponsorshipsToLedger}
+                onSaveWeeklyReview={handleSaveWeeklyReview}
+                onSaveCapacityConfig={handleSaveCapacityConfig}
               />
             )}
 
@@ -1124,6 +1618,7 @@ export default function App() {
                 filaments={state.filaments}
                 orders={state.orders}
                 financials={state.financials}
+                sponsorships={state.contentSponsorships || []}
                 onSaveOrder={handleSaveOrder}
                 onMoveOrderStage={handleMoveOrderStage}
                 onDeleteOrder={handleDeleteOrder}
@@ -1134,6 +1629,79 @@ export default function App() {
             )}
           </main>
         </div>
+
+        {/* JSON Backup / Restore Preview Modal */}
+        {jsonRestorePreview && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="json-restore-title"
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+          >
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                  <h2
+                  id="json-restore-title"
+                  className="text-base font-bold text-slate-900 dark:text-slate-100"
+                >
+                  JSON Backup Restore Preview
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setJsonRestorePreview(null)}
+                  className="p-1 text-slate-400 hover:text-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
+                <p>
+                  File <strong>{jsonRestorePreview.fileName}</strong> (Schema v
+                  {jsonRestorePreview.migratedFromVersion} → v2) has been validated:
+                </p>
+                <ul className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-1 font-medium">
+                  <li>• {jsonRestorePreview.migratedState.products.length} Catalog Products</li>
+                  <li>• {jsonRestorePreview.migratedState.tasks.length} Tasks & Gantt Timelines</li>
+                  <li>
+                    • {jsonRestorePreview.migratedState.contentItems?.length || 0} Content Studio Items &{' '}
+                    {jsonRestorePreview.migratedState.contentPublications?.length || 0} Channel Publications
+                  </li>
+                  <li>• {jsonRestorePreview.migratedState.filaments.length} Filament Spools</li>
+                  <li>
+                    • {jsonRestorePreview.migratedState.orders.length} Orders &{' '}
+                    {jsonRestorePreview.migratedState.financials.length} Financial Records
+                  </li>
+                </ul>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setJsonRestorePreview(null)}
+                  className="px-4 py-1.5 text-xs font-medium text-slate-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCorruptStorageAlert(null);
+                    setState(jsonRestorePreview.migratedState);
+                    setJsonRestorePreview(null);
+                    setSheetStatus({
+                      type: 'success',
+                      message: `Successfully restored workspace data from "${jsonRestorePreview.fileName}".`,
+                    });
+                  }}
+                  className="px-4 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg"
+                >
+                  Confirm Restore Data
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mandatory User Confirmation Dialog for Spreadsheet Save & Fetch Operations */}
         {sheetConfirmModal && (
@@ -1166,19 +1734,33 @@ export default function App() {
 
               {sheetConfirmModal.mode === 'save' ? (
                 <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
+                  {sheetConfirmModal.isStaleWarning && (
+                    <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200 space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
+                        Newer Remote Spreadsheet Revision Warning (Stale Revision)
+                      </div>
+                      <p className="text-[11px]">
+                        The spreadsheet has a newer remote revision <code>{sheetConfirmModal.remoteRevisionId}</code> ({sheetConfirmModal.remoteSavedAt}) that differs from your local base revision (<code>{state.syncMeta?.lastSavedRevisionId}</code>). Saving now will append a new revision to <code>PrintOS_Snapshots</code> (previous revisions remain preserved and recoverable).
+                      </p>
+                    </div>
+                  )}
+
                   <p>
-                    This will overwrite the first sheet tab of your connected Google
-                    Spreadsheet (
+                    Save a versioned snapshot to app-owned tabs (<code>PrintOS_Meta</code>, <code>PrintOS_Snapshots</code>, <code>PrintOS_Catalog</code>, <code>PrintOS_Tasks</code>, <code>PrintOS_Content</code>) on Spreadsheet (
                     <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
                       {parseSpreadsheetIdFromUrl(spreadsheetUrl)}
                     </span>
-                    ) with your current PrintOS workspace data:
+                    ) without deleting user-owned tabs:
                   </p>
                   <ul className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-1 font-medium">
                     <li>• {state.products.length} Products in Catalog</li>
                     <li>• {state.tasks.length} Tasks & Gantt Timelines</li>
+                    <li>
+                      • {state.contentItems?.length || 0} Content Studio Items &{' '}
+                      {state.contentPublications?.length || 0} Publications
+                    </li>
                     <li>• {state.filaments.length} Filament Spools</li>
-                    <li>• {state.printJobs.length} Print Jobs & {state.printers.length} Printers</li>
                     <li>• {state.orders.length} Customer Orders & {state.financials.length} Financial Records</li>
                   </ul>
                   {needsGoogleAuth && (
@@ -1190,17 +1772,57 @@ export default function App() {
               ) : (
                 <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
                   <p>
-                    Replace your current local workspace with the data fetched from{' '}
+                    Select a snapshot revision from{' '}
                     <strong className="text-slate-900 dark:text-slate-100">
                       {sheetConfirmModal.spreadsheetTitle}
-                    </strong>
-                    ?
+                    </strong>{' '}
+                    to load into your local workspace:
                   </p>
+
+                  {sheetConfirmModal.revisions.length > 1 && (
+                    <div>
+                      <label className="block font-semibold mb-1">
+                        Select Snapshot Revision (Supports Previous Revision Recovery):
+                      </label>
+                      <select
+                        value={sheetConfirmModal.selectedRevisionId}
+                        onChange={(e) => {
+                          const revId = e.target.value;
+                          const found = sheetConfirmModal.revisions.find(
+                            (r) => r.revisionId === revId
+                          );
+                          if (found) {
+                            setSheetConfirmModal({
+                              ...sheetConfirmModal,
+                              selectedRevisionId: revId,
+                              fetchedState: found.state,
+                              syncedAt: found.savedAt,
+                              revisionId: found.revisionId,
+                            });
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 font-mono bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                      >
+                        {sheetConfirmModal.revisions.map((rev, idx) => (
+                          <option key={rev.revisionId} value={rev.revisionId}>
+                            {idx === 0 ? '[Latest] ' : `[Revision #${idx + 1}] `}
+                            {rev.revisionId} — {rev.savedAt.slice(0, 19).replace('T', ' ')} ({rev.summaryText})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <ul className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-1 font-medium">
                     <li>• {sheetConfirmModal.fetchedState.products?.length || 0} Products</li>
                     <li>• {sheetConfirmModal.fetchedState.tasks?.length || 0} Tasks</li>
+                    <li>
+                      • {sheetConfirmModal.fetchedState.contentItems?.length || 0} Content Items &{' '}
+                      {sheetConfirmModal.fetchedState.contentPublications?.length || 0} Channel Publications
+                    </li>
                     <li>• {sheetConfirmModal.fetchedState.filaments?.length || 0} Filament Spools</li>
                     <li>• {sheetConfirmModal.fetchedState.orders?.length || 0} Customer Orders</li>
+                    <li>• Revision: {sheetConfirmModal.revisionId || 'latest'}</li>
                     <li>• Last Synced: {sheetConfirmModal.syncedAt.slice(0, 19).replace('T', ' ')}</li>
                   </ul>
                 </div>
@@ -1237,10 +1859,19 @@ export default function App() {
                           state,
                           token
                         );
+                        setState((prev) => ({
+                          ...prev,
+                          syncMeta: {
+                            schemaVersion: 2,
+                            lastSavedRevisionId: result.revisionId,
+                            lastSyncedAt: result.savedAt,
+                            lastSpreadsheetTitle: result.spreadsheetTitle,
+                          },
+                        }));
                         setSheetConfirmModal(null);
                         setSheetStatus({
                           type: 'success',
-                          message: `Saved ${result.rowCount} rows to "${result.spreadsheetTitle}" (${result.sheetTabName}).`,
+                          message: `Verified & saved revision ${result.revisionId} (${result.rowCount} rows) to "${result.spreadsheetTitle}".`,
                         });
                       } catch (err: any) {
                         setSheetConfirmModal(null);
@@ -1262,10 +1893,13 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
+                      setCorruptStorageAlert(null);
                       setState(sheetConfirmModal.fetchedState);
                       setSheetStatus({
                         type: 'success',
-                        message: `Fetched & loaded data from "${sheetConfirmModal.spreadsheetTitle}".`,
+                        message: `Fetched & loaded revision ${
+                          sheetConfirmModal.revisionId || 'latest'
+                        } from "${sheetConfirmModal.spreadsheetTitle}".`,
                       });
                       setSheetConfirmModal(null);
                     }}

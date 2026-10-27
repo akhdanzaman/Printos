@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ContentSponsorship,
   CostCalculatorInput,
   CustomerOrder,
   FilamentSpool,
@@ -15,6 +16,7 @@ import {
   calculateProductMargin,
   formatRupiah,
 } from '../utils/calculations';
+import { calculateSponsorshipSummary } from '../utils/contentStudio';
 import {
   ArrowRight,
   Calculator,
@@ -33,6 +35,7 @@ interface BusinessFinanceBoardProps {
   filaments: FilamentSpool[];
   orders: CustomerOrder[];
   financials: FinancialRecord[];
+  sponsorships?: ContentSponsorship[];
   onSaveOrder: (order: CustomerOrder) => void;
   onMoveOrderStage: (orderId: string, stage: OrderStage) => void;
   onDeleteOrder: (orderId: string) => void;
@@ -46,6 +49,7 @@ export const BusinessFinanceBoard: React.FC<BusinessFinanceBoardProps> = ({
   filaments,
   orders,
   financials,
+  sponsorships = [],
   onSaveOrder,
   onMoveOrderStage,
   onDeleteOrder,
@@ -83,6 +87,7 @@ export const BusinessFinanceBoard: React.FC<BusinessFinanceBoardProps> = ({
   const [newRecordModal, setNewRecordModal] = useState<FinancialRecord | null>(null);
 
   const summary = calculateFinancialSummary(financials, orders, filaments);
+  const sponsorshipStats = calculateSponsorshipSummary(sponsorships);
   const calcResult = calculatePrintCost(calcInput);
 
   // Sort products by total revenue generated (unitsSold * sellingPriceRp)
@@ -158,12 +163,13 @@ export const BusinessFinanceBoard: React.FC<BusinessFinanceBoardProps> = ({
       {/* Top Financial KPIs in Indonesian Rupiah (Rp) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-          <div className="text-xs text-slate-500">Total Revenue (Rp)</div>
+          <div className="text-xs text-slate-500">Total Revenue (Settled Rp)</div>
           <div className="mt-1.5 text-2xl font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
             {formatRupiah(summary.totalRevenueRp)}
           </div>
           <div className="mt-1 text-xs font-mono tabular-nums text-slate-500">
-            Active pipeline: +{formatRupiah(summary.activeOrderRevenueRp)}
+            Orders pipeline: +{formatRupiah(summary.activeOrderRevenueRp)} · Sponsor Promised (Unsettled):{' '}
+            {formatRupiah(sponsorshipStats.promisedIncomeRp)}
           </div>
         </div>
 
@@ -1184,6 +1190,12 @@ export const BusinessFinanceBoard: React.FC<BusinessFinanceBoardProps> = ({
                     <option value="Packaging & Shipping">Packaging & Shipping</option>
                     <option value="Electricity & Ops">Electricity & Ops</option>
                     <option value="Marketing & Ads">Marketing & Ads</option>
+                    <option value="Sponsorship & Creator Income">
+                      Sponsorship & Creator Income
+                    </option>
+                    <option value="Content Production Expense">
+                      Content Production Expense
+                    </option>
                   </select>
                 </div>
               </div>
