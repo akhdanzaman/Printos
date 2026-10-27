@@ -41,11 +41,27 @@ const auth = getAuth(app);
  * The Sheets OAuth client can be supplied at build time so the deployed domain keeps its own
  * client instead of the AI Studio one. Only the client ID is needed by the browser flow —
  * the client secret never belongs in the bundle.
+ *
+ * The literal `import.meta.env.VITE_*` access is what Vite replaces at build time, so it is kept
+ * inside a try/catch: under Node (unit tests) `import.meta.env` does not exist.
  */
-const GOOGLE_CLIENT_ID: string =
-  (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ||
-  (import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined)?.trim() ||
-  firebaseConfig.oAuthClientId;
+function readEnvClientId(): string {
+  try {
+    const fromVite = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+    if (fromVite && fromVite.trim()) return fromVite.trim();
+  } catch {
+    // not running through Vite
+  }
+  try {
+    const legacy = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined;
+    if (legacy && legacy.trim()) return legacy.trim();
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+const GOOGLE_CLIENT_ID: string = readEnvClientId() || firebaseConfig.oAuthClientId;
 
 const provider = new GoogleAuthProvider();
 SCOPES.forEach((scope) => provider.addScope(scope));
@@ -146,8 +162,34 @@ function loadGis(): Promise<any> {
   return gisLoader;
 }
 
-function requestGisToken(google: any, options: GisClientOptions): Promise<GisTokenResponse> {
+function requestGisToken(
+  google: any,
+  options: GisClientOptions,
+  timeoutMs = 25000
+): Promise<GisTokenResponse> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: (value: any) => void, value: any) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      fn(value);
+    };
+    const timer =
+      options.mode === 'popup'
+        ? setTimeout(() => {
+            finish(
+              reject,
+              Object.assign(
+                new Error(
+                  'Google tidak merespons dalam 25 detik. Popup kemungkinan diblokir tanpa pesan — izinkan popup untuk situs ini lalu coba lagi.'
+                ),
+                { gisError: 'timeout' }
+              )
+            );
+          }, timeoutMs)
+        : null;
+
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES.join(' '),
@@ -155,24 +197,46 @@ function requestGisToken(google: any, options: GisClientOptions): Promise<GisTok
       prompt: options.mode === 'redirect' ? 'consent' : '',
       callback: (response: any) => {
         if (response?.access_token) {
-          resolve({
+          finish(resolve, {
             accessToken: response.access_token,
             expiresIn: Number(response.expires_in) || 3600,
           });
           return;
         }
-        reject(Object.assign(new Error(response?.error_description || response?.error || 'Login Google dibatalkan.'), {
-          gisError: response?.error || 'unknown',
-        }));
+        finish(
+          reject,
+          Object.assign(new Error(response?.error_description || response?.error || 'Login Google dibatalkan.'), {
+            gisError: response?.error || 'unknown',
+          })
+        );
       },
       error_callback: (error: any) => {
-        reject(Object.assign(new Error(error?.message || 'Popup Google gagal dibuka.'), {
-          gisError: error?.type || 'popup_failed',
-        }));
+        const type = error?.type || 'popup_failed';
+        console.warn('[PrintOS auth] GIS error_callback:', type, error?.message || '');
+        finish(
+          reject,
+          Object.assign(new Error(error?.message || 'Popup Google gagal dibuka.'), { gisError: type })
+        );
       },
     });
     client.requestAccessToken();
   });
+}
+
+/**
+ * Starts the redirect flow and verifies that the browser actually navigated.
+ * If it did not (blocked iframe, sandboxed preview, popup blocker + redirect blocker),
+ * we surface an error instead of returning silently.
+ */
+async function startRedirectOrThrow(google: any, onProgress?: (message: string) => void): Promise<never> {
+  onProgress?.('Popup diblokir — membuka halaman login Google…');
+  requestGisToken(google, { mode: 'redirect' }, 0).catch((error) => {
+    console.warn('[PrintOS auth] redirect failed:', error?.message || error);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  throw new Error(
+    'Popup Google diblokir dan halaman login tidak terbuka. Buka PrintOS di tab browser biasa (bukan panel preview/iframe), izinkan popup untuk situs ini, lalu coba lagi.'
+  );
 }
 
 async function fetchAccountEmail(accessToken: string): Promise<string> {
@@ -191,6 +255,8 @@ async function fetchAccountEmail(accessToken: string): Promise<string> {
 function isPopupFailure(error: any): boolean {
   const code = String(error?.gisError || '').toLowerCase();
   const message = String(error?.message || '').toLowerCase();
+  // A timeout may simply mean the user is slow in an open popup: never auto-redirect for it.
+  if (code === 'timeout') return false;
   return (
     code.includes('popup') ||
     code === 'idp_error' ||
@@ -239,17 +305,24 @@ export function preloadGoogleIdentity(): Promise<void> {
     .catch(() => undefined);
 }
 
-export const googleSignIn = async (): Promise<{
+export const googleSignIn = async (
+  onProgress?: (message: string) => void
+): Promise<{
   user: GoogleSessionUser;
   accessToken: string;
 } | null> => {
   // Synchronous fast path: if the script is already loaded, call Google inside the same gesture.
   const ready = (window as any).google?.accounts?.oauth2;
-  const google = ready ? (window as any).google : await loadGis();
+  let google = (window as any).google;
+  if (!ready) {
+    onProgress?.('Memuat Google Identity Services…');
+    google = await loadGis();
+  }
   if (!GOOGLE_CLIENT_ID) {
     throw new Error('OAuth client ID belum dikonfigurasi (VITE_GOOGLE_CLIENT_ID).');
   }
 
+  onProgress?.('Membuka jendela login Google…');
   try {
     const token = await requestGisToken(google, { mode: 'popup' });
     // Persist immediately so a slow userinfo call cannot lose the credential.
@@ -259,10 +332,10 @@ export const googleSignIn = async (): Promise<{
     return { user: { email }, accessToken: token.accessToken };
   } catch (error: any) {
     if (isPopupFailure(error)) {
-      // Popup blocked: hand the flow to Google with a full-page redirect.
-      // The token comes back in the URL fragment and is picked up by completeRedirectSignIn().
-      requestGisToken(google, { mode: 'redirect' }).catch(() => undefined);
-      return null;
+      // Popup blocked: fall through to Google's redirect flow, and throw a visible
+      // error if the browser refuses to navigate as well.
+      console.warn('[PrintOS auth] popup blocked, trying redirect:', error?.gisError);
+      return await startRedirectOrThrow(google, onProgress);
     }
     const message = mapGisError(error);
     console.error('Google Sign-In error:', error);

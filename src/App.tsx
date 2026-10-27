@@ -171,7 +171,7 @@ export default function App() {
   const [needsGoogleAuth, setNeedsGoogleAuth] = useState<boolean>(true);
   const [isSyncingSheet, setIsSyncingSheet] = useState<false | 'save' | 'fetch'>(false);
   const [sheetStatus, setSheetStatus] = useState<{
-    type: 'idle' | 'success' | 'error';
+    type: 'idle' | 'success' | 'error' | 'info';
     message: string;
   }>({ type: 'idle', message: '' });
 
@@ -1207,14 +1207,22 @@ export default function App() {
                   type="button"
                   onClick={async () => {
                     try {
-                      setSheetStatus({ type: 'idle', message: '' });
-                      const res = await googleSignIn();
+                      setSheetStatus({ type: 'info', message: 'Menghubungkan ke Google…' });
+                      const res = await googleSignIn((message) =>
+                        setSheetStatus({ type: 'info', message })
+                      );
                       if (res) {
                         setGoogleUserEmail(res.user.email || 'Google Connected');
                         setNeedsGoogleAuth(false);
                         setSheetStatus({
                           type: 'success',
-                          message: 'Google Sheets account connected (Private OAuth in-memory).',
+                          message: 'Google Sheets terhubung. Token tersimpan di tab ini sampai ~1 jam.',
+                        });
+                      } else {
+                        setSheetStatus({
+                          type: 'error',
+                          message:
+                            'Login Google tidak selesai. Coba lagi dari tab browser biasa (bukan panel preview).',
                         });
                       }
                     } catch (err: any) {
@@ -1368,6 +1376,8 @@ export default function App() {
                   className={`p-2 rounded-lg text-[10px] leading-snug ${
                     sheetStatus.type === 'error'
                       ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/60'
+                      : sheetStatus.type === 'info'
+                      ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60'
                       : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
                   }`}
                 >
@@ -1885,7 +1895,9 @@ export default function App() {
                       try {
                         let token = await getAccessToken();
                         if (!token) {
-                          const signInRes = await googleSignIn();
+                          const signInRes = await googleSignIn((message) =>
+                            setSheetStatus({ type: 'info', message })
+                          );
                           if (!signInRes) {
                             throw new Error('Google Sign-In is required to save to Google Sheets.');
                           }
