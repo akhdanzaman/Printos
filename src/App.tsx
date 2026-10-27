@@ -45,6 +45,7 @@ import {
 import {
   checkRemoteSpreadsheetRevision,
   completeRedirectSignIn,
+  getLastAuthError,
   fetchWorkspaceFromSpreadsheet,
   getAccessToken,
   googleSignIn,
@@ -196,17 +197,28 @@ export default function App() {
   >(null);
 
   useEffect(() => {
-    // Completes the redirect-based Google sign-in (used when popups are blocked).
+    // Completes the OAuth code exchange after Google redirects back to the app.
     let cancelled = false;
-    completeRedirectSignIn().then((result) => {
-      if (cancelled || !result) return;
-      setGoogleUserEmail(result.user.email || 'Google Connected');
-      setNeedsGoogleAuth(false);
-      setSheetStatus({
-        type: 'success',
-        message: 'Google Sheets terhubung kembali lewat mode redirect.',
+    completeRedirectSignIn()
+      .then((result) => {
+        if (cancelled) return;
+        if (result) {
+          setGoogleUserEmail(result.user.email || 'Google Connected');
+          setNeedsGoogleAuth(false);
+          setSheetStatus({
+            type: 'success',
+            message: 'Google Sheets terhubung. Token tersimpan di tab ini sampai ~1 jam.',
+          });
+          return;
+        }
+        const authError = getLastAuthError();
+        if (authError) setSheetStatus({ type: 'error', message: authError });
+      })
+      .catch((error: any) => {
+        if (!cancelled) {
+          setSheetStatus({ type: 'error', message: error?.message || 'Login Google gagal.' });
+        }
       });
-    });
 
     const unsubscribe = initAuth(
       (user) => {
@@ -1220,9 +1232,8 @@ export default function App() {
                         });
                       } else {
                         setSheetStatus({
-                          type: 'error',
-                          message:
-                            'Login Google tidak selesai. Coba lagi dari tab browser biasa (bukan panel preview).',
+                          type: 'info',
+                          message: 'Menunggu Google… halaman akan berpindah ke login.',
                         });
                       }
                     } catch (err: any) {
@@ -1899,7 +1910,13 @@ export default function App() {
                             setSheetStatus({ type: 'info', message })
                           );
                           if (!signInRes) {
-                            throw new Error('Google Sign-In is required to save to Google Sheets.');
+                            setIsSyncingSheet(false);
+                            setSheetStatus({
+                              type: 'info',
+                              message:
+                                'Mengalihkan ke Google untuk login. Setelah kembali, klik Save sekali lagi.',
+                            });
+                            return;
                           }
                           token = signInRes.accessToken;
                           setGoogleUserEmail(signInRes.user.email || 'Google Connected');
