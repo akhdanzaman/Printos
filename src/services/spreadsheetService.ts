@@ -37,6 +37,16 @@ const CHUNK_CHAR_LIMIT = 25000;
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 
+/**
+ * The Sheets OAuth client can be supplied at build time so the deployed domain keeps its own
+ * client instead of the AI Studio one. Only the client ID is needed by the browser flow —
+ * the client secret never belongs in the bundle.
+ */
+const GOOGLE_CLIENT_ID: string =
+  (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ||
+  (import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined)?.trim() ||
+  firebaseConfig.oAuthClientId;
+
 const provider = new GoogleAuthProvider();
 SCOPES.forEach((scope) => provider.addScope(scope));
 
@@ -139,7 +149,7 @@ function loadGis(): Promise<any> {
 function requestGisToken(google: any, options: GisClientOptions): Promise<GisTokenResponse> {
   return new Promise((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: firebaseConfig.oAuthClientId,
+      client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES.join(' '),
       ux_mode: options.mode,
       prompt: options.mode === 'redirect' ? 'consent' : '',
@@ -236,8 +246,8 @@ export const googleSignIn = async (): Promise<{
   // Synchronous fast path: if the script is already loaded, call Google inside the same gesture.
   const ready = (window as any).google?.accounts?.oauth2;
   const google = ready ? (window as any).google : await loadGis();
-  if (!firebaseConfig.oAuthClientId) {
-    throw new Error('oAuthClientId belum diisi di firebase-applet-config.json.');
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error('OAuth client ID belum dikonfigurasi (VITE_GOOGLE_CLIENT_ID).');
   }
 
   try {
