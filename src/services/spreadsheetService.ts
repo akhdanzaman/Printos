@@ -1,13 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  getAuth,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  User,
-} from 'firebase/auth';
+import { getAuth, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
   ContentItem,
@@ -48,133 +40,285 @@ const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 SCOPES.forEach((scope) => provider.addScope(scope));
 
-// Flag to indicate if we are in the middle of a sign-in flow.
-let isSigningIn = false;
-// Cache the access token in memory ONLY (never in localStorage or sessionStorage).
-let cachedAccessToken: string | null = null;
-
-export const initAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
-  onAuthFailure?: () => void
-) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
-      }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
-    }
-  });
-};
-
-/**
- * Popup sign-in fails in three common situations we can handle gracefully:
- * - the browser blocks the popup (Safari/iOS, strict settings, webviews)
- * - the app is embedded in an iframe without allow-popups
- * - the environment does not support popups at all
- * In those cases we fall back to the redirect flow and pick the credential up on return.
- */
-const POPUP_FALLBACK_CODES = new Set([
-  'auth/popup-blocked',
-  'auth/operation-not-supported-in-this-environment',
-  'auth/web-storage-unsupported',
-  'auth/popup-blocked-by-browser',
-]);
-
-export function isEmbeddedContext(): boolean {
-  try {
-    return window.self !== window.top;
-  } catch {
-    return true;
-  }
+export interface GoogleSessionUser {
+  email: string;
 }
 
-const friendlyAuthError = (error: any): Error => {
-  const code = error?.code || '';
-  if (code === 'auth/popup-closed-by-user') {
-    return new Error('Popup Google ditutup sebelum selesai. Coba lagi dan pilih akun sampai muncul "Continue".');
-  }
-  if (code === 'auth/cancelled-popup-request') {
-    return new Error('Masih ada permintaan login yang berjalan. Tunggu sebentar lalu coba lagi.');
-  }
-  if (code === 'auth/unauthorized-domain') {
-    return new Error(
-      `Domain "${window.location.hostname}" belum terdaftar di Firebase Authentication → Settings → Authorized domains.`
-    );
-  }
-  if (code === 'auth/blocked-by-popup-blocker') {
-    return new Error('Popup diblokir. Izinkan popup untuk domain ini, atau login lewat tab yang sama (mode redirect).');
-  }
-  return error instanceof Error ? error : new Error(String(error));
-};
+/**
+ * Access tokens used to be memory-only, which meant every refresh (and every redirect round-trip)
+ * looked like a fresh sign-in. They now live in sessionStorage for the lifetime of the tab:
+ * gone when the tab closes, invalid after ~1 hour, never written into the workspace snapshot,
+ * JSON export or Google Sheets payload.
+ */
+const TOKEN_STORAGE_KEY = 'printos_google_sheets_token_v1';
 
-/** Completes a redirect-based sign-in after the page comes back from Google. */
-export async function completeRedirectSignIn(): Promise<{
-  user: User;
+let cachedAccessToken: string | null = null;
+
+interface StoredSession {
   accessToken: string;
-} | null> {
+  email: string;
+  expiresAt: number;
+}
+
+function readStoredSession(): StoredSession | null {
   try {
-    const result = await getRedirectResult(auth);
-    if (!result) return null;
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) return null;
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error) {
-    console.error('Google redirect sign-in error:', error);
+    const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredSession>;
+    if (!parsed?.accessToken || !parsed?.expiresAt) return null;
+    if (Date.now() > parsed.expiresAt - 60_000) {
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      return null;
+    }
+    return {
+      accessToken: parsed.accessToken,
+      email: parsed.email || '',
+      expiresAt: parsed.expiresAt,
+    };
+  } catch {
     return null;
   }
 }
 
+function persistSession(accessToken: string, expiresInSeconds: number, email: string) {
+  cachedAccessToken = accessToken;
+  try {
+    sessionStorage.setItem(
+      TOKEN_STORAGE_KEY,
+      JSON.stringify({
+        accessToken,
+        email,
+        expiresAt: Date.now() + Math.max(60, expiresInSeconds) * 1000,
+      })
+    );
+  } catch {
+    // Private mode / blocked storage: the session still works until the page reloads.
+  }
+}
+
+function clearSession() {
+  cachedAccessToken = null;
+  try {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Google Identity Services token client.
+ * We ask Google directly for a Sheets access token instead of relying on a Firebase session,
+ * because Firebase redirect results are dropped whenever third-party storage is partitioned
+ * (which is exactly the "login berhasil tapi tombol Sign in muncul lagi" loop).
+ */
+type GisTokenResponse = { accessToken: string; expiresIn: number };
+type GisClientOptions = { mode: 'popup' | 'redirect' };
+
+let gisLoader: Promise<any> | null = null;
+
+function loadGis(): Promise<any> {
+  const existing = (window as any).google?.accounts?.oauth2;
+  if (existing) return Promise.resolve((window as any).google);
+  if (!gisLoader) {
+    gisLoader = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        if ((window as any).google?.accounts?.oauth2) resolve((window as any).google);
+        else reject(new Error('Google Identity Services tidak tersedia di halaman ini.'));
+      };
+      script.onerror = () => reject(new Error('Gagal memuat Google Identity Services (jaringan diblokir?).'));
+      document.head.appendChild(script);
+    });
+  }
+  return gisLoader;
+}
+
+function requestGisToken(google: any, options: GisClientOptions): Promise<GisTokenResponse> {
+  return new Promise((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: firebaseConfig.oAuthClientId,
+      scope: SCOPES.join(' '),
+      ux_mode: options.mode,
+      prompt: options.mode === 'redirect' ? 'consent' : '',
+      callback: (response: any) => {
+        if (response?.access_token) {
+          resolve({
+            accessToken: response.access_token,
+            expiresIn: Number(response.expires_in) || 3600,
+          });
+          return;
+        }
+        reject(Object.assign(new Error(response?.error_description || response?.error || 'Login Google dibatalkan.'), {
+          gisError: response?.error || 'unknown',
+        }));
+      },
+      error_callback: (error: any) => {
+        reject(Object.assign(new Error(error?.message || 'Popup Google gagal dibuka.'), {
+          gisError: error?.type || 'popup_failed',
+        }));
+      },
+    });
+    client.requestAccessToken();
+  });
+}
+
+async function fetchAccountEmail(accessToken: string): Promise<string> {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return typeof data?.email === 'string' ? data.email : '';
+  } catch {
+    return '';
+  }
+}
+
+function isPopupFailure(error: any): boolean {
+  const code = String(error?.gisError || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    code.includes('popup') ||
+    code === 'idp_error' ||
+    message.includes('popup') ||
+    message.includes('blocked')
+  );
+}
+
+function mapGisError(error: any): string {
+  const code = String(error?.gisError || '').toLowerCase();
+  const host = window.location.hostname;
+  if (code === 'origin_mismatch' || /origin/i.test(code)) {
+    return `Origin "${window.location.origin}" belum diizinkan untuk OAuth client ini. Tambahkan di Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client → Authorized JavaScript origins.`;
+  }
+  if (code === 'access_denied' || code === 'popup_closed' || code === 'user_cancel') {
+    return 'Login Google dibatalkan sebelum selesai. Coba lagi dan pilih akun sampai muncul tombol Continue.';
+  }
+  if (code === 'invalid_client' || code === 'invalid_client_id') {
+    return 'OAuth client ID tidak cocok dengan project Firebase ini.';
+  }
+  if (host && error?.message) return error.message;
+  return error?.message || 'Login Google gagal.';
+}
+
+export const initAuth = (
+  onAuthSuccess?: (user: GoogleSessionUser, token?: string) => void,
+  onAuthFailure?: () => void
+) => {
+  const stored = readStoredSession();
+  if (stored) {
+    cachedAccessToken = stored.accessToken;
+    if (onAuthSuccess) onAuthSuccess({ email: stored.email }, stored.accessToken);
+  } else if (onAuthFailure) {
+    onAuthFailure();
+  }
+  // Load the GIS script early so a later click does not lose user activation to a network await.
+  void preloadGoogleIdentity();
+  // No Firebase listener: the token above is the only credential this app needs.
+  return () => undefined;
+};
+
+/** Warm up the Google Identity Services script so click handlers can open the popup synchronously. */
+export function preloadGoogleIdentity(): Promise<void> {
+  return loadGis()
+    .then(() => undefined)
+    .catch(() => undefined);
+}
+
 export const googleSignIn = async (): Promise<{
-  user: User;
+  user: GoogleSessionUser;
   accessToken: string;
 } | null> => {
-  isSigningIn = true;
-  try {
-    if (isEmbeddedContext()) {
-      throw new Error(
-        'Aplikasi sedang berjalan di dalam iframe, jadi popup Google diblokir. Buka PrintOS di tab browser sendiri lalu ulangi Sign in with Google.'
-      );
-    }
+  // Synchronous fast path: if the script is already loaded, call Google inside the same gesture.
+  const ready = (window as any).google?.accounts?.oauth2;
+  const google = ready ? (window as any).google : await loadGis();
+  if (!firebaseConfig.oAuthClientId) {
+    throw new Error('oAuthClientId belum diisi di firebase-applet-config.json.');
+  }
 
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('Gagal mendapatkan akses Google Sheets dari sesi login.');
-      }
-      cachedAccessToken = credential.accessToken;
-      return { user: result.user, accessToken: cachedAccessToken };
-    } catch (error: any) {
-      const code = error?.code || '';
-      if (POPUP_FALLBACK_CODES.has(code)) {
-        // Redirect flow: the browser leaves this page and returns with the credential.
-        await signInWithRedirect(auth, provider);
-        return null;
-      }
-      throw friendlyAuthError(error);
+  try {
+    const token = await requestGisToken(google, { mode: 'popup' });
+    // Persist immediately so a slow userinfo call cannot lose the credential.
+    persistSession(token.accessToken, token.expiresIn, '');
+    const email = await fetchAccountEmail(token.accessToken);
+    if (email) persistSession(token.accessToken, token.expiresIn, email);
+    return { user: { email }, accessToken: token.accessToken };
+  } catch (error: any) {
+    if (isPopupFailure(error)) {
+      // Popup blocked: hand the flow to Google with a full-page redirect.
+      // The token comes back in the URL fragment and is picked up by completeRedirectSignIn().
+      requestGisToken(google, { mode: 'redirect' }).catch(() => undefined);
+      return null;
     }
-  } catch (error) {
+    const message = mapGisError(error);
     console.error('Google Sign-In error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
+    throw new Error(message);
   }
 };
 
+/**
+ * Picks up credentials after a full-page Google redirect:
+ * - Google Identity Services puts the access token in the URL fragment
+ * - older Firebase redirect sessions are still accepted for backwards compatibility
+ */
+export async function completeRedirectSignIn(): Promise<{
+  user: GoogleSessionUser;
+  accessToken: string;
+} | null> {
+  const hash = window.location.hash || '';
+  if (hash.includes('access_token=')) {
+    const params = new URLSearchParams(hash.replace(/^#/, ''));
+    const accessToken = params.get('access_token');
+    const expiresIn = Number(params.get('expires_in') || 3600);
+    if (accessToken) {
+      try {
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      } catch {
+        // ignore
+      }
+      const email = await fetchAccountEmail(accessToken);
+      persistSession(accessToken, expiresIn, email);
+      return { user: { email }, accessToken };
+    }
+  }
+
+  try {
+    const result = await getRedirectResult(auth);
+    const credential = result ? GoogleAuthProvider.credentialFromResult(result) : null;
+    if (result && credential?.accessToken) {
+      const email = result.user.email || '';
+      persistSession(credential.accessToken, 3600, email);
+      return { user: { email }, accessToken: credential.accessToken };
+    }
+  } catch (error) {
+    console.error('Legacy Firebase redirect error:', error);
+  }
+  return null;
+}
+
 export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
+  if (cachedAccessToken) return cachedAccessToken;
+  const stored = readStoredSession();
+  if (stored) {
+    cachedAccessToken = stored.accessToken;
+    return stored.accessToken;
+  }
+  return null;
 };
 
+export const getSignedInEmail = (): string => readStoredSession()?.email || '';
+
 export const logoutGoogle = async () => {
-  await auth.signOut();
-  cachedAccessToken = null;
+  clearSession();
+  try {
+    await auth.signOut();
+  } catch {
+    // Firebase session may not exist when using the GIS token flow.
+  }
 };
 
 /**
@@ -196,10 +340,6 @@ export function extractSpreadsheetId(input: string): string | null {
   return null;
 }
 
-/**
- * Protects human-readable cells against spreadsheet formula injection (`=`, `+`, `-`, `@`)
- * even if exported or viewed in external spreadsheet tools.
- */
 export function sanitizeSpreadsheetText(value: string | number | null | undefined): string | number {
   if (typeof value === 'number') return value;
   const str = String(value ?? '');
