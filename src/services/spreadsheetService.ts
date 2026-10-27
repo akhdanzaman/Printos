@@ -2,6 +2,8 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
@@ -70,19 +72,94 @@ export const initAuth = (
   });
 };
 
+/**
+ * Popup sign-in fails in three common situations we can handle gracefully:
+ * - the browser blocks the popup (Safari/iOS, strict settings, webviews)
+ * - the app is embedded in an iframe without allow-popups
+ * - the environment does not support popups at all
+ * In those cases we fall back to the redirect flow and pick the credential up on return.
+ */
+const POPUP_FALLBACK_CODES = new Set([
+  'auth/popup-blocked',
+  'auth/operation-not-supported-in-this-environment',
+  'auth/web-storage-unsupported',
+  'auth/popup-blocked-by-browser',
+]);
+
+export function isEmbeddedContext(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+const friendlyAuthError = (error: any): Error => {
+  const code = error?.code || '';
+  if (code === 'auth/popup-closed-by-user') {
+    return new Error('Popup Google ditutup sebelum selesai. Coba lagi dan pilih akun sampai muncul "Continue".');
+  }
+  if (code === 'auth/cancelled-popup-request') {
+    return new Error('Masih ada permintaan login yang berjalan. Tunggu sebentar lalu coba lagi.');
+  }
+  if (code === 'auth/unauthorized-domain') {
+    return new Error(
+      `Domain "${window.location.hostname}" belum terdaftar di Firebase Authentication → Settings → Authorized domains.`
+    );
+  }
+  if (code === 'auth/blocked-by-popup-blocker') {
+    return new Error('Popup diblokir. Izinkan popup untuk domain ini, atau login lewat tab yang sama (mode redirect).');
+  }
+  return error instanceof Error ? error : new Error(String(error));
+};
+
+/** Completes a redirect-based sign-in after the page comes back from Google. */
+export async function completeRedirectSignIn(): Promise<{
+  user: User;
+  accessToken: string;
+} | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result) return null;
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) return null;
+    cachedAccessToken = credential.accessToken;
+    return { user: result.user, accessToken: cachedAccessToken };
+  } catch (error) {
+    console.error('Google redirect sign-in error:', error);
+    return null;
+  }
+}
+
 export const googleSignIn = async (): Promise<{
   user: User;
   accessToken: string;
 } | null> => {
+  isSigningIn = true;
   try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Failed to obtain Google Sheets access token.');
+    if (isEmbeddedContext()) {
+      throw new Error(
+        'Aplikasi sedang berjalan di dalam iframe, jadi popup Google diblokir. Buka PrintOS di tab browser sendiri lalu ulangi Sign in with Google.'
+      );
     }
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) {
+        throw new Error('Gagal mendapatkan akses Google Sheets dari sesi login.');
+      }
+      cachedAccessToken = credential.accessToken;
+      return { user: result.user, accessToken: cachedAccessToken };
+    } catch (error: any) {
+      const code = error?.code || '';
+      if (POPUP_FALLBACK_CODES.has(code)) {
+        // Redirect flow: the browser leaves this page and returns with the credential.
+        await signInWithRedirect(auth, provider);
+        return null;
+      }
+      throw friendlyAuthError(error);
+    }
   } catch (error) {
     console.error('Google Sign-In error:', error);
     throw error;

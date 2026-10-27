@@ -44,6 +44,7 @@ import {
 } from './utils/contentStudio';
 import {
   checkRemoteSpreadsheetRevision,
+  completeRedirectSignIn,
   fetchWorkspaceFromSpreadsheet,
   getAccessToken,
   googleSignIn,
@@ -195,6 +196,18 @@ export default function App() {
   >(null);
 
   useEffect(() => {
+    // Completes the redirect-based Google sign-in (used when popups are blocked).
+    let cancelled = false;
+    completeRedirectSignIn().then((result) => {
+      if (cancelled || !result) return;
+      setGoogleUserEmail(result.user.email || 'Google Connected');
+      setNeedsGoogleAuth(false);
+      setSheetStatus({
+        type: 'success',
+        message: 'Google Sheets terhubung kembali lewat mode redirect.',
+      });
+    });
+
     const unsubscribe = initAuth(
       (user) => {
         setGoogleUserEmail(user.email || 'Google Connected');
@@ -205,7 +218,10 @@ export default function App() {
         setNeedsGoogleAuth(true);
       }
     );
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
