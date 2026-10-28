@@ -22,6 +22,7 @@ export const APP_TAB_SNAPSHOTS = 'PrintOS_Snapshots';
 export const APP_TAB_CATALOG = 'PrintOS_Catalog';
 export const APP_TAB_TASKS = 'PrintOS_Tasks';
 export const APP_TAB_CONTENT = 'PrintOS_Content';
+export const APP_TAB_RESEARCH = 'PrintOS_Research';
 
 export const REQUIRED_APP_TABS = [
   APP_TAB_META,
@@ -29,6 +30,7 @@ export const REQUIRED_APP_TABS = [
   APP_TAB_CATALOG,
   APP_TAB_TASKS,
   APP_TAB_CONTENT,
+  APP_TAB_RESEARCH,
 ];
 
 const MAX_SNAPSHOT_HISTORY = 10;
@@ -514,6 +516,7 @@ export function serializeStateToSheetRows(state: PrintOSState): {
   productRows: (string | number)[][];
   taskRows: (string | number)[][];
   contentRows: (string | number)[][];
+  researchRows: (string | number)[][];
 } {
   const updatedAt = new Date().toISOString();
   const jsonString = JSON.stringify(state);
@@ -810,7 +813,77 @@ export function serializeStateToSheetRows(state: PrintOSState): {
     ),
   ];
 
-  return { summaryRows, productRows, taskRows, contentRows };
+  const researchNotes = state.contentResearchNotes || [];
+  const researchRows: (string | number)[][] = [
+    [
+      'Research ID',
+      'Title',
+      'Platform',
+      'Source Account',
+      'Source URL',
+      'Captured Date',
+      'Pillar',
+      'Series ID',
+      'Research Type',
+      'Core Finding',
+      'Comment Quotes',
+      'Metrics Snapshot',
+      'Screenshot Ref',
+      'Verification',
+      'Epistemic Status',
+      'Confidence',
+      'Decision',
+      'Decision Reason',
+      'Open Question',
+      'Linked Content IDs',
+      'Test Outcome',
+      'Test Result',
+      'Validity Days',
+      'Expires At',
+      'Last Used',
+      'Times Used',
+      'Will Use Again',
+      'Reference Links',
+      'Updated At',
+    ],
+    ...researchNotes.map((note) => [
+      note.id,
+      sanitizeSpreadsheetText(note.title),
+      note.sourcePlatform,
+      sanitizeSpreadsheetText(note.sourceAccount || ''),
+      note.sourceUrl || '',
+      note.capturedDate,
+      note.pillar,
+      note.seriesId || '',
+      note.researchType,
+      sanitizeSpreadsheetText(note.coreFinding || ''),
+      sanitizeSpreadsheetText(note.rawEvidence?.commentQuotes || ''),
+      sanitizeSpreadsheetText(note.rawEvidence?.metricsSnapshot || ''),
+      sanitizeSpreadsheetText(note.rawEvidence?.screenshotRef || ''),
+      note.verificationMethod || '',
+      note.epistemicStatus || '',
+      note.confidenceLevel || '',
+      note.decision || '',
+      sanitizeSpreadsheetText(note.decisionReason || ''),
+      sanitizeSpreadsheetText(note.openQuestion || ''),
+      (note.linkedContentItemIds || []).join(', '),
+      note.testOutcome || '',
+      sanitizeSpreadsheetText(note.testResultSummary || ''),
+      note.validityDays ?? '',
+      note.expiresAtDate || '',
+      note.lastUsedDate || '',
+      note.timesUsed ?? '',
+      note.willUseAgain === undefined ? '' : note.willUseAgain ? 'Yes' : 'No',
+      sanitizeSpreadsheetText(
+        (note.links || [])
+          .map((link) => `${link.label || 'tautan'} [${link.category}] ${link.url}`)
+          .join(' | ')
+      ),
+      note.updatedAt || updatedAt,
+    ]),
+  ];
+
+  return { summaryRows, productRows, taskRows, contentRows, researchRows };
 }
 
 /**
@@ -1231,7 +1304,7 @@ export async function saveWorkspaceToSpreadsheet(
     ],
   ];
 
-  const { productRows, taskRows, contentRows } = serializeStateToSheetRows({
+  const { productRows, taskRows, contentRows, researchRows } = serializeStateToSheetRows({
     ...state,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     syncMeta: {
@@ -1261,6 +1334,7 @@ export async function saveWorkspaceToSpreadsheet(
           `${APP_TAB_CATALOG}!A1:Z5000`,
           `${APP_TAB_TASKS}!A1:Z5000`,
           `${APP_TAB_CONTENT}!A1:Z5000`,
+          `${APP_TAB_RESEARCH}!A1:Z5000`,
         ],
       }),
     }
@@ -1304,6 +1378,11 @@ export async function saveWorkspaceToSpreadsheet(
             range: `${APP_TAB_CONTENT}!A1`,
             majorDimension: 'ROWS',
             values: contentRows,
+          },
+          {
+            range: `${APP_TAB_RESEARCH}!A1`,
+            majorDimension: 'ROWS',
+            values: researchRows,
           },
         ],
       }),

@@ -530,3 +530,66 @@ test('stage progress logs are written to the content tab with actor, timestamps 
   assert.equal(contentHeader[contentHeader.length - 1], 'Stage Logs');
   assert.equal(contentRows[1][contentHeader.length - 1], 2);
 });
+
+test('content research notes are projected into their own sheet tab with evidence and decisions', () => {
+  const note = {
+    id: 'rsr-1',
+    title: 'Komentar penonton minta rute malam',
+    sourcePlatform: 'TikTok' as const,
+    sourceAccount: '@akuncontoh',
+    sourceUrl: 'https://tiktok.com/@akuncontoh/video/1',
+    links: [
+      {
+        id: 'lnk-1',
+        label: 'Contoh hook',
+        url: 'https://tiktok.com/x',
+        category: 'Content Example' as const,
+      },
+    ],
+    capturedDate: '2026-10-28',
+    pillar: 'personal' as const,
+    seriesId: 'ser-jkt-rute',
+    researchType: 'Audience' as const,
+    coreFinding: 'Penonton menanyakan rute malam, bukan tarif.',
+    rawEvidence: {
+      commentQuotes: '"kalau malam aman nggak?"',
+      metricsSnapshot: '1.2M views, 340 komentar',
+      screenshotRef: 'IMG_4821.PNG',
+    },
+    verificationMethod: 'desk_research' as const,
+    epistemicStatus: 'hypothesis' as const,
+    confidenceLevel: 'Medium' as const,
+    openQuestion: 'Apakah aman jam 22.00?',
+    decision: 'test_as_content' as const,
+    decisionReason: 'Murah dibuat dan langsung menjawab pertanyaan berulang.',
+    linkedContentItemIds: ['cnt-1'],
+    testOutcome: 'in_testing' as const,
+    testResultSummary: '',
+    timesUsed: 1,
+    lastUsedDate: '2026-10-29',
+    willUseAgain: true,
+    validityDays: 90,
+    expiresAtDate: '2027-01-26',
+    updatedAt: '2026-10-29',
+  };
+
+  const state = {
+    ...INITIAL_PRINTOS_STATE,
+    contentResearchNotes: [note],
+  } as PrintOSState;
+
+  const { researchRows } = serializeStateToSheetRows(state);
+  assert.equal(researchRows.length, 2, 'header + one note');
+  const header = researchRows[0];
+  assert.equal(header[0], 'Research ID');
+  const row = researchRows[1];
+  assert.equal(row[0], 'rsr-1');
+  assert.equal(row[2], 'TikTok');
+  assert.equal(row[8], 'Audience');
+  assert.equal(row[9], 'Penonton menanyakan rute malam, bukan tarif.');
+  assert.equal(row[11], '1.2M views, 340 komentar');
+  assert.equal(row[16], 'test_as_content');
+  assert.equal(row[19], 'cnt-1');
+  assert.equal(row[26], 'Yes');
+  assert.match(String(row[27]), /Contoh hook \[Content Example\] https:\/\/tiktok.com\/x/);
+});
