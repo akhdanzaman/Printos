@@ -3,7 +3,7 @@ import { migratePrintOSState } from '../src/utils/contentStudio';
 import { serializeStateToSheetRows } from '../src/services/spreadsheetService';
 
 const raw = fs.readFileSync(
-  'D:/Project/hobi/Hermes/printos-creator/content-packs/printos-content-pack-v2.json',
+  'D:/Project/hobi/Hermes/printos-creator/content-packs/printos-content-pack-v4.json',
   'utf8'
 );
 const migrated = migratePrintOSState(raw);

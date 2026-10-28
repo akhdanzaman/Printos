@@ -228,6 +228,26 @@ export function ContentStageProgress({ item, publications, onSave }: Props) {
                         {stageGate?.intent}
                       </div>
 
+                      {stage === 'Script / Slides' && (
+                        <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-2.5 text-[11px] space-y-1">
+                          <div className="text-slate-400 uppercase tracking-wide text-[10px]">
+                            Konteks brief — bukan naskah
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-600 dark:text-slate-300">Hook: </span>
+                            <span className="text-slate-700 dark:text-slate-300">{item.brief.hook}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-600 dark:text-slate-300">Pesan: </span>
+                            <span className="text-slate-700 dark:text-slate-300">{item.brief.keyMessage}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-600 dark:text-slate-300">CTA: </span>
+                            <span className="text-slate-700 dark:text-slate-300">{item.brief.callToAction}</span>
+                          </div>
+                        </div>
+                      )}
+
                       {(stageGate?.fields || []).map((field) => (
                         <label key={field.id} className="block">
                           <span className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">

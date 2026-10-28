@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
-const packPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/printos-content-pack-v3.json';
-const outPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/RENCANA-KONTEN-v3.md';
+const packPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/printos-content-pack-v4.json';
+const outPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/RENCANA-KONTEN-v4.md';
 const s = JSON.parse(fs.readFileSync(packPath, 'utf8'));
 
 const projectById = new Map(s.contentProjects.map((p: any) => [p.id, p]));
@@ -65,7 +65,7 @@ for (const project of s.contentProjects) {
   }
 }
 
-push('## Catatan progress');push('');push('Semua 150 item sudah punya isi untuk Strategy, Idea & Research Bank, dan Brief (actor: agent). Stage saat ini: Script / Slides — langkah berikutnya menulis naskah atau slide per item.');push('');push('## 12 ide pertama yang sudah masuk kalender');
+push('## Catatan progress');push('');push('Strategy, Idea & Research, dan Brief terisi untuk 150 item. Naskah baru ditulis untuk 12 item yang sudah punya tanggal tayang; 138 sisanya sengaja kosong di stage Script / Slides — bukan dikerjakan setengah, tapi menunggu dipilih.');push('');push('## 12 ide pertama yang sudah masuk kalender');
 push('');
 push('| Tanggal | Judul | Series |');
 push('| --- | --- | --- |');

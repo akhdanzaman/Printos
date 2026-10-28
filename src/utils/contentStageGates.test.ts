@@ -69,7 +69,11 @@ test('script gate accepts either a written script or two carousel slides', () =>
   const blocked = makeItem({ stage: 'Script / Slides' });
   assert.ok(validateGate(blocked, 'Script / Slides', { script: '' }).length > 0);
 
-  const withScript = makeItem({ stage: 'Script / Slides', scriptText: 'Naskah lengkap dua puluh karakter lebih.' });
+  const withScript = makeItem({
+    stage: 'Script / Slides',
+    scriptText:
+      'HOOK (0-2 dtk): Aku naik MRT tanpa tujuan.\nBEAT 2 (3-8 dtk): Peron masih kosong.\nBEAT 3 (9-16 dtk): Dua belas stasiun lewat.\nPENUTUP (17-24 dtk): Tidak buru-buru pulang.',
+  });
   assert.deepEqual(validateGate(withScript, 'Script / Slides', { script: withScript.scriptText }), []);
 
   const withSlides = makeItem({
@@ -193,4 +197,24 @@ test('migration keeps an existing stageHistory intact', async () => {
   assert.equal(migrated.stageHistory?.length, 1);
   assert.equal(migrated.stageHistory?.[0].completedAtJakarta, '2026-10-28 09:40 WIB');
   assert.equal(migrated.stageHistory?.[0].actor, 'agent');
+});
+
+test('a "script" that only repeats hook + key message is rejected', () => {
+  const item = makeItem({
+    stage: 'Script / Slides',
+    brief: {
+      hook: 'Ada 40 menit di mana semua orang pulang bersamaan.',
+      keyMessage: 'Waktu adalah rute yang tidak ada di peta.',
+      callToAction: 'Sebut jam pulang yang paling kamu hindari',
+      targetAudience: 'Pekerja kantor',
+      estimatedDurationSec: 24,
+    },
+    scriptText: '',
+  });
+  const echo = `${item.brief.hook}\n\n${item.brief.keyMessage}`;
+  const problems = validateGate(item, 'Script / Slides', {
+    script: echo,
+    beatNotes: echo,
+  });
+  assert.ok(problems.some((p) => p.includes('menyalin hook')), problems.join(' | '));
 });

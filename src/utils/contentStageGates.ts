@@ -27,6 +27,15 @@ export interface StageGate {
 
 const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
+/** A real script has beats and is not just the hook + key message copied back. */
+function isRealScript(item: ContentItem): boolean {
+  const text = (item.scriptText || '').trim();
+  if (text.length < 60) return false;
+  const echo = `${item.brief.hook}\n\n${item.brief.keyMessage}`.replace(/\s+/g, ' ').trim();
+  return text.replace(/\s+/g, ' ') !== echo;
+}
+
+
 export const STAGE_GATES: StageGate[] = [
   {
     stage: 'Strategy',
@@ -146,8 +155,8 @@ export const STAGE_GATES: StageGate[] = [
         type: 'textarea',
         placeholder: 'Hook, isi, penutup. Untuk carousel, tulis per slide.',
         required: false,
-        prefill: (i) => i.scriptText,
-        help: 'Untuk carousel, minimal 2 slide terisi di tab Script.',
+        prefill: (i) => (isRealScript(i) ? i.scriptText : ''),
+        help: 'Naskah harus punya beat (0-2 dtk, 3-8 dtk, …), bukan salinan hook. Untuk carousel, minimal 2 slide terisi di tab Script.',
       },
       {
         id: 'beatNotes',
@@ -155,15 +164,22 @@ export const STAGE_GATES: StageGate[] = [
         type: 'textarea',
         placeholder: '0-2 dtk hook, 3-20 dtk isi, penutup',
         required: false,
-        prefill: (i) => i.voiceOverScriptOrNotes,
+        prefill: () => '',
       },
     ],
     validate: (item, output) => {
       const problems: string[] = [];
-      const hasScript = s(output.script).length >= 20 || s(item.scriptText).length >= 20;
+      const raw = s(output.script) || s(item.scriptText);
+      const echo = `${item.brief.hook}\n\n${item.brief.keyMessage}`;
+      const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
       const filledSlides = item.carouselSlides.filter((sl) => s(sl.headline) || s(sl.bodyCopy));
-      if (!hasScript && filledSlides.length < 2) {
-        problems.push('Isi naskah (min. 20 karakter) atau minimal 2 slide carousel');
+      const isEcho =
+        raw.length > 0 && echo.trim().length > 0 && normalize(raw) === normalize(echo);
+
+      if (isEcho) {
+        problems.push('Naskah masih menyalin hook dan pesan inti — tulis beat per bagian');
+      } else if (raw.length < 60 && filledSlides.length < 2) {
+        problems.push('Tulis naskah lengkap (min. 60 karakter, ada beat) atau minimal 2 slide carousel');
       }
       return problems;
     },
