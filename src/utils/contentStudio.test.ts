@@ -590,6 +590,8 @@ test('content research notes are projected into their own sheet tab with evidenc
   assert.equal(row[11], '1.2M views, 340 komentar');
   assert.equal(row[16], 'test_as_content');
   assert.equal(row[19], 'cnt-1');
-  assert.equal(row[26], 'Yes');
-  assert.match(String(row[27]), /Contoh hook \[Content Example\] https:\/\/tiktok.com\/x/);
+  assert.equal(row[24], 'Active');
+  assert.ok(Number(row[25]) > 0, 'days remaining computed');
+  assert.equal(row[28], 'Yes');
+  assert.match(String(row[29]), /Contoh hook \[Content Example\] https:\/\/tiktok.com\/x/);
 });

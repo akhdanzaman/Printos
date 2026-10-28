@@ -13,6 +13,7 @@ import {
   TaskItem,
 } from '../types/printos';
 import { CURRENT_SCHEMA_VERSION, migratePrintOSState } from '../utils/contentStudio';
+import { getResearchFreshnessStatus } from '../utils/contentResearch';
 
 export const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
@@ -814,6 +815,15 @@ export function serializeStateToSheetRows(state: PrintOSState): {
   ];
 
   const researchNotes = state.contentResearchNotes || [];
+  const todayJakartaIso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const freshnessByNoteId = new Map(
+    researchNotes.map((note) => [note.id, getResearchFreshnessStatus(note, todayJakartaIso)])
+  );
   const researchRows: (string | number)[][] = [
     [
       'Research ID',
@@ -840,6 +850,8 @@ export function serializeStateToSheetRows(state: PrintOSState): {
       'Test Result',
       'Validity Days',
       'Expires At',
+      'Trend Status',
+      'Days Remaining',
       'Last Used',
       'Times Used',
       'Will Use Again',
@@ -871,6 +883,12 @@ export function serializeStateToSheetRows(state: PrintOSState): {
       sanitizeSpreadsheetText(note.testResultSummary || ''),
       note.validityDays ?? '',
       note.expiresAtDate || '',
+      freshnessByNoteId.get(note.id)?.status === 'expired'
+        ? 'Expired'
+        : freshnessByNoteId.get(note.id)?.status === 'expiring_soon'
+        ? 'Expiring soon'
+        : 'Active',
+      freshnessByNoteId.get(note.id)?.daysRemaining ?? '',
       note.lastUsedDate || '',
       note.timesUsed ?? '',
       note.willUseAgain === undefined ? '' : note.willUseAgain ? 'Yes' : 'No',
