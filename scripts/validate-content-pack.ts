@@ -5,13 +5,13 @@ const path = 'D:/Project/hobi/Hermes/printos-creator/content-packs/printos-conte
 const raw = fs.readFileSync(path, 'utf8');
 const result = migratePrintOSState(raw);
 
-const fail = (msg: string) => {
+const fail = (msg: string): never => {
   console.error('FAIL:', msg);
   process.exit(1);
 };
 
 if (result.status !== 'ok' || !result.state) fail(result.errorMessage || 'migration failed');
-const s = result.state;
+const s = result.state as NonNullable<typeof result.state>;
 const ids = (rows: any[]) => new Set(rows.map((r) => r.id));
 const projectIds = ids(s.contentProjects || []);
 const seriesIds = ids(s.contentSeries || []);

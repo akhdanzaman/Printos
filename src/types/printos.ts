@@ -396,12 +396,25 @@ export interface LocalAssetReference {
   notes: string;
 }
 
+export interface ContentStageLog {
+  id: string;
+  stage: ContentStage;
+  startedAtJakarta: string;
+  completedAtJakarta: string;
+  actor: 'user' | 'agent';
+  summary: string;
+  output: Record<string, string>;
+  overrideReason?: string;
+}
+
 export interface ContentItem {
   id: string;
   title: string;
   pillar: ContentPillar;
   format: ContentFormat;
   stage: ContentStage;
+  /** Append-only log of what each stage produced, with Jakarta timestamps. */
+  stageHistory?: ContentStageLog[];
   projectId: string;
   seriesId?: string;
   linkedProductId?: string; // Optional — personal content has no mandatory product

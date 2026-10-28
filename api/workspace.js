@@ -375,11 +375,76 @@ export default async function handler(req, res) {
         item.stage = payload.stage;
         item.updatedAt = new Date().toISOString();
         created = item;
+      } else if (action === 'log-stage') {
+        const STAGES = [
+          'Strategy',
+          'Idea & Research Bank',
+          'Brief',
+          'Script / Slides',
+          'Shot List',
+          'Production Plan',
+          'Assets & Edit Notes',
+          'QC',
+          'Ready to Publish',
+          'Published',
+          'Review & Repurpose',
+        ];
+        const item = (workspace.contentItems || []).find((c) => c.id === payload.contentItemId);
+        if (!item) throw new Error('contentItemId tidak ditemukan');
+        const stage = String(payload.stage || '');
+        if (!STAGES.includes(stage)) throw new Error(`stage tidak dikenal: ${stage}`);
+
+        const output =
+          payload.output && typeof payload.output === 'object' && !Array.isArray(payload.output)
+            ? Object.fromEntries(
+                Object.entries(payload.output).map(([k, v]) => [k, typeof v === 'string' ? v : String(v ?? '')])
+              )
+            : {};
+        const filled = Object.values(output).filter((v) => String(v).trim().length > 0);
+        if (filled.length === 0 && !payload.overrideReason) {
+          throw new Error('output stage kosong: isi minimal satu field atau sertakan overrideReason');
+        }
+
+        const now = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Jakarta',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        })
+          .formatToParts(new Date())
+          .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+        const stamp = `${now.year}-${now.month}-${now.day} ${now.hour}:${now.minute} WIB`;
+
+        const history = Array.isArray(item.stageHistory) ? item.stageHistory : [];
+        const previous = history.find((log) => log.stage === stage);
+        const log = {
+          id: `log-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          stage,
+          startedAtJakarta: previous?.startedAtJakarta || stamp,
+          completedAtJakarta: stamp,
+          actor: payload.actor === 'agent' ? 'agent' : 'user',
+          summary: String(payload.summary || filled[0] || '').slice(0, 160),
+          output,
+          overrideReason: String(payload.overrideReason || ''),
+        };
+        item.stageHistory = [...history.filter((entry) => entry.stage !== stage), log].sort(
+          (a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage)
+        );
+
+        if (payload.advance) {
+          const idx = STAGES.indexOf(stage);
+          item.stage = idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : stage;
+        }
+        item.updatedAt = stamp;
+        created = { item, log };
       } else {
         return json(res, 400, {
           ok: false,
           error: 'action tidak dikenal',
-          allowed: ['add-task', 'add-content', 'add-publication', 'move-content-stage'],
+          allowed: ['add-task', 'add-content', 'add-publication', 'move-content-stage', 'log-stage'],
         });
       }
 

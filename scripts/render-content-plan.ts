@@ -74,7 +74,7 @@ items
   .sort((a: any, b: any) => a.targetPublishDate.localeCompare(b.targetPublishDate))
   .slice(0, 12)
   .forEach((item: any) => {
-    push(`| ${item.targetPublishDate} | ${item.title.replace(/\|/g, '/')} | ${seriesById.get(item.seriesId)?.name || '—'} |`);
+    push(`| ${item.targetPublishDate} | ${item.title.replace(/\|/g, '/')} | ${(seriesById.get(item.seriesId) as any)?.name || '—'} |`);
   });
 push('');
 push('## Yang belum ada di pack ini');

@@ -23,6 +23,7 @@ import {
   SponsorshipStatus,
   WeeklyContentReview,
 } from '../types/printos';
+import { ContentStageProgress } from './content/ContentStageProgress';
 import { formatDuration, formatRupiah, getChecklistProgress } from '../utils/calculations';
 import {
   addDaysIso,
@@ -152,8 +153,8 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
   // Connected Content Workbench Modal State
   const [editingItem, setEditingItem] = useState<ContentItem | null>(null);
   const [workbenchSection, setWorkbenchSection] = useState<
-    'brief' | 'script' | 'shots' | 'assets' | 'qc' | 'channels'
-  >('brief');
+    'progress' | 'brief' | 'script' | 'shots' | 'assets' | 'qc' | 'channels'
+  >('progress');
 
   // Markdown / Print Export Preview Modal
   const [markdownPreviewItem, setMarkdownPreviewItem] = useState<ContentItem | null>(null);
@@ -310,7 +311,7 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
       updatedAt: jakartaToday,
     };
     setEditingItem(newItem);
-    setWorkbenchSection('brief');
+    setWorkbenchSection('progress');
   };
 
   const handleQuickCaptureSubmit = (e: React.FormEvent) => {
@@ -804,7 +805,7 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
                               type="button"
                               onClick={() => {
                                 setEditingItem(item);
-                                setWorkbenchSection('brief');
+                                setWorkbenchSection('progress');
                               }}
                               className="w-full text-left block"
                             >
@@ -939,7 +940,7 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
                               type="button"
                               onClick={() => {
                                 setEditingItem(item);
-                                setWorkbenchSection('brief');
+                                setWorkbenchSection('progress');
                               }}
                               className="font-semibold text-slate-900 dark:text-slate-100 hover:text-orange-600 text-left block"
                             >
@@ -985,7 +986,7 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
                               type="button"
                               onClick={() => {
                                 setEditingItem(item);
-                                setWorkbenchSection('brief');
+                                setWorkbenchSection('progress');
                               }}
                               className="text-xs font-semibold text-orange-600 hover:underline"
                             >
@@ -2293,6 +2294,7 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
             {/* Workbench Section Switcher */}
             <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs">
               {[
+                { id: 'progress', label: '0. Progress & Log' },
                 { id: 'brief', label: '1. Brief & Fact Checks' },
                 { id: 'script', label: '2. Script / Slides / Story' },
                 {
@@ -2328,6 +2330,18 @@ export const ContentStudioBoard: React.FC<ContentStudioBoardProps> = ({
                 </button>
               ))}
             </div>
+
+            {/* SECTION 0: STAGE GATES & PROGRESS LOG */}
+            {workbenchSection === 'progress' && (
+              <ContentStageProgress
+                item={editingItem}
+                publications={publications.filter((p) => p.contentItemId === editingItem.id)}
+                onSave={(next) => {
+                  onSaveContentItem(next);
+                  setEditingItem(next);
+                }}
+              />
+            )}
 
             {/* SECTION 1: BRIEF & FACT CHECK REFERENCES */}
             {workbenchSection === 'brief' && (

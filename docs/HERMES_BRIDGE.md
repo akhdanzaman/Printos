@@ -84,9 +84,26 @@ node tools/printos-hermes.mjs add-task --title "Riset taman Jakarta Timur" --due
 node tools/printos-hermes.mjs add-content --title "Ide: MRT tanpa tujuan" --format short_video --pillar personal --yes
 node tools/printos-hermes.mjs add-publication --content-id cnt-… --channel TikTok --date 2026-11-02 --time 19:30 --yes
 node tools/printos-hermes.mjs stage --content-id cnt-… --stage QC --yes
+node tools/printos-hermes.mjs log-stage --content-id cnt-… --stage Brief \
+  --output '{"keyMessage":"Tempat gratis itu ada","callToAction":"Simpan daftar","duration":"24"}' \
+  --advance --yes
 ```
 
 Semua perintah tulis menolak jalan tanpa `--yes`. Itu lapisan izin kedua, selain kamu yang memang harus menyuruh Hermes.
+
+### Stage log (gembok per tahap)
+
+Setiap stage punya output wajib, dan `log-stage` mencatatnya:
+
+| Field | Isi |
+|---|---|
+| `stage` | salah satu dari 11 stage (`Strategy` … `Review & Repurpose`) |
+| `output` | objek field stage, mis. `keyMessage`, `script`, `shotPlan`, `finalFileName`, `lesson` |
+| `advance` | `true` → item pindah ke stage berikutnya setelah log ditulis |
+| `actor` | `agent` (default dari CLI) atau `user` |
+| `overrideReason` | wajib kalau `output` kosong; tercatat di log sebagai override |
+
+Log ditulis dengan timestamp `YYYY-MM-DD HH:mm WIB`, tidak menimpa log stage lain, dan tampil di tab **0. Progress & Log** pada kartu konten. Bridge tidak memvalidasi aturan field yang detail (itu tugas UI), tapi menolak stage tak dikenal dan output kosong tanpa alasan.
 
 ## 6. Batasan yang disengaja
 

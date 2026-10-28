@@ -194,6 +194,43 @@ const handlers = {
     });
     console.log(JSON.stringify({ ok: true, revision: data.revision, content: data.created }, null, 2));
   },
+
+  /**
+   * Records what a stage produced and (optionally) advances the item.
+   * node tools/printos-hermes.mjs log-stage --content-id cnt_1 --stage Brief \
+   *   --output '{"keyMessage":"...","callToAction":"...","duration":"24"}' --advance --yes
+   */
+  async 'log-stage'() {
+    requireYes();
+    const contentId = flag('content-id');
+    const stage = flag('stage');
+    if (!contentId || !stage) {
+      console.error('--content-id dan --stage wajib.');
+      process.exit(2);
+    }
+    let output = {};
+    const rawOutput = flag('output');
+    if (rawOutput) {
+      try {
+        output = JSON.parse(rawOutput);
+      } catch {
+        console.error('--output harus JSON valid, contoh: {"keyMessage":"..."}');
+        process.exit(2);
+      }
+    }
+    const data = await request('POST', {
+      action: 'log-stage',
+      payload: {
+        contentItemId: contentId,
+        stage,
+        output,
+        advance: args.includes('--advance'),
+        actor: flag('actor') || 'agent',
+        overrideReason: flag('reason') || '',
+      },
+    });
+    console.log(JSON.stringify({ ok: true, revision: data.revision, result: data.created }, null, 2));
+  },
 };
 
 if (!handlers[command]) {
