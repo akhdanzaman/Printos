@@ -168,6 +168,7 @@ export function mergeWorkspace(local: PrintOSState, remote: PrintOSState): Merge
   next.productionSessions = mergeSimple(local.productionSessions, remote.productionSessions);
   next.contentSponsorships = mergeSimple(local.contentSponsorships, remote.contentSponsorships);
   next.weeklyReviews = mergeSimple(local.weeklyReviews, remote.weeklyReviews);
+  next.contentResearchNotes = mergeSimple(local.contentResearchNotes, remote.contentResearchNotes);
   next.creatorCapacity = local.creatorCapacity ?? remote.creatorCapacity;
 
   return { state: next, addedTasks, addedContent, addedPublications, updatedContent, addedOther };

@@ -1429,6 +1429,318 @@ export const INITIAL_PRINTOS_STATE: PrintOSState = {
         'Batch-shoot 2 videos on Saturday morning so weekday evenings only require light 45-minute editing.',
     },
   ],
+  contentResearchNotes: [
+    {
+      id: 'cres-1',
+      title: 'Extreme 48-Hour Water Submersion Hook Outperforms Aesthetic B-Roll for Planters',
+      sourcePlatform: 'TikTok',
+      sourceAccount: '@plantcraft.studio',
+      sourceUrl: 'https://www.tiktok.com/@plantcraft.studio/video/7419002819',
+      links: [
+        {
+          id: 'rlink-1a',
+          label: 'TikTok 48h Leak Test Reel (@plantcraft.studio)',
+          url: 'https://www.tiktok.com/@plantcraft.studio/video/7419002819',
+          category: 'Content Example',
+        },
+        {
+          id: 'rlink-1b',
+          label: 'Bambu Wiki: Scarf Joint Seam & Watertight Walls Theory',
+          url: 'https://wiki.bambulab.com/en/software/bambu-studio/Seam',
+          category: 'Theory / Framework',
+        },
+      ],
+      capturedDate: '2026-10-19',
+      pillar: '3d_marketing',
+      seriesId: 'cser-1',
+      linkedProductId: 'prod-3',
+      researchType: 'Hook',
+      coreFinding:
+        'Opening the first 3 seconds with a skepticism-busting physical torture test ("Does a 3D printed pot leak after 48 hours on a dry paper towel?") generates 3.8x higher completion rate than slow aesthetic plant B-roll.',
+      rawEvidence: {
+        commentQuotes:
+          '"Kirain cetakan 3D pasti rembes lewat sela-sela layer! Kalau beneran kering di atas tisu 2 hari, mau pesan 4 buat meja kafe." — @kopisenja.sby',
+        metricsSnapshot:
+          'Competitor ref: 318K views, 24.1K likes, 6,420 saves (2.0% save-to-view ratio). Our test: 12,450 views & 510 saves in 7d + 4 direct planter orders.',
+        screenshotRef: 'IMG_8390_TikTok_Watertight_Comments.PNG (iPhone Album: Research Oct)',
+      },
+      verificationMethod: 'self_verified',
+      epistemicStatus: 'confirmed',
+      confidenceLevel: 'High',
+      openQuestion: '',
+      decision: 'test_as_content',
+      decisionReason:
+        'Core repeatable hook strategy for any functional 3D-printed container: open with a physical stress test on camera in the first 3 seconds instead of slow cinematic B-roll.',
+      linkedContentItemIds: ['cnt-1'],
+      testOutcome: 'proven_winner',
+      testResultSummary:
+        'Proven Winner: Reached 12,450 TikTok views + 510 saves (4.1% save rate) and converted Rp 596,000 in direct custom orders from Kopi Senja Roastery.',
+      timesUsed: 3,
+      lastUsedDate: '2026-10-22',
+      willUseAgain: true,
+      validityDays: 90,
+      expiresAtDate: '2027-01-17',
+      updatedAt: '2026-10-25',
+    },
+    {
+      id: 'cres-2',
+      title: 'Transparent Rupiah COGS Breakdown Neutralizes "Overpriced Plastic" Comments',
+      sourcePlatform: 'Tokopedia / Shopee',
+      sourceAccount: 'Buyer Q&A & @3dprintjakarta.id Comments',
+      sourceUrl: 'https://www.tokopedia.com/printos-studio/discussion',
+      links: [
+        {
+          id: 'rlink-2a',
+          label: 'Tokopedia Buyer Price Q&A Thread',
+          url: 'https://www.tokopedia.com/printos-studio/discussion',
+          category: 'Platform / Case Study',
+        },
+        {
+          id: 'rlink-2b',
+          label: 'Cost Transparency & Value Anchoring Pricing Theory',
+          url: 'https://hbr.org/2014/09/the-transparency-trap',
+          category: 'Theory / Framework',
+        },
+        {
+          id: 'rlink-2c',
+          label: 'IG Carousel Example: Rupiah Print COGS Breakdown',
+          url: 'https://www.instagram.com/p/DB2026COGSBreakdown/',
+          category: 'Content Example',
+        },
+      ],
+      capturedDate: '2026-10-21',
+      pillar: '3d_marketing',
+      seriesId: 'cser-2',
+      linkedProductId: 'prod-1',
+      researchType: 'Pricing / Market',
+      coreFinding:
+        'Shoppers comparing Rp 185,000 articulated dragons against Rp 45,000 mass-molded toys convert once they see the 5.6-hour Dual Silk print duration, Rp 345k/kg filament cost, and zero-defect QC buffer.',
+      rawEvidence: {
+        commentQuotes:
+          '"Kenapa naga plastik harganya 185rb kak?" vs "Oh ternyata nyetaknya hampir 6 jam pakai filamen Dual Silk impor + garansi engsel mulus, wajar banget harganya."',
+        metricsSnapshot:
+          '18 price-question comments across 3 reels; educational cost-breakdown carousels in maker niche average 4.5% save rate from fellow makers & buyers.',
+        screenshotRef: 'IMG_8441_Marketplace_Price_QA.PNG (iPhone Album: Research Oct)',
+      },
+      verificationMethod: 'self_verified',
+      epistemicStatus: 'confirmed',
+      confidenceLevel: 'High',
+      openQuestion:
+        'Does showing exact Rupiah COGS attract more B2B/fellow maker followers or retail art-toy buyers?',
+      decision: 'test_as_content',
+      decisionReason:
+        'Use transparent unit-economics carousels whenever launching a Rp 150k+ SKU to anchor perceived value and disarm price objections.',
+      linkedContentItemIds: ['cnt-2'],
+      testOutcome: 'in_testing',
+      testResultSummary:
+        'Used on 5-slide Rupiah COGS carousel for Saturday 19:30 WIB on Instagram & TikTok Photo Mode.',
+      timesUsed: 2,
+      lastUsedDate: '2026-10-24',
+      willUseAgain: true,
+      validityDays: 120,
+      expiresAtDate: '2027-02-18',
+      updatedAt: '2026-10-24',
+    },
+    {
+      id: 'cres-3',
+      title: '9 PM After-Hours Commute & Workbench Narratives Resonate with Jakarta 9-to-5 Audience',
+      sourcePlatform: 'Threads / Blog',
+      sourceAccount: '@jakarta.commuter.journal',
+      sourceUrl: 'https://www.threads.net/@jakarta.commuter.journal/post/DBa9182',
+      links: [
+        {
+          id: 'rlink-3a',
+          label: 'Threads 9 PM MRT Commuter Story (@jakarta.commuter.journal)',
+          url: 'https://www.threads.net/@jakarta.commuter.journal/post/DBa9182',
+          category: 'Content Example',
+        },
+        {
+          id: 'rlink-3b',
+          label: 'Quiet Ritual Storytelling vs Hustle Porn Essay',
+          url: 'https://nesslabs.com/mindful-productivity',
+          category: 'Theory / Framework',
+        },
+      ],
+      capturedDate: '2026-10-22',
+      pillar: 'personal',
+      seriesId: 'cser-3',
+      researchType: 'Audience',
+      coreFinding:
+        'Urban office workers commuting on the Sudirman MRT between 18:00–21:00 WIB engage deeply with honest, quiet stories about building tangible evening rituals rather than loud "quit your 9-to-5" hustle claims.',
+      rawEvidence: {
+        commentQuotes:
+          '"Pulang kantor jam 7 malam rasanya otak udah penuh spreadsheet, baca cerita soal nyalain mesin di pojok kamar jam 9 malam gini bikin tenang banget."',
+        metricsSnapshot:
+          '1,420 reposts & 3,890 likes on text-only 3-part evening threads posted between 20:30–21:30 WIB.',
+        screenshotRef: 'IMG_8465_Threads_Evening_Story.PNG (iPhone Album: Research Oct)',
+      },
+      verificationMethod: 'desk_research',
+      epistemicStatus: 'hypothesis',
+      confidenceLevel: 'Medium',
+      openQuestion:
+        'Do pure text short stories on Threads/Instagram captions drive stronger long-term follower loyalty when kept 100% free of product links?',
+      decision: 'test_as_content',
+      decisionReason:
+        'Repeatable personal narrative strategy: publish quiet evening reflections between 20:30–21:30 WIB with zero product pitch to build deep human trust.',
+      linkedContentItemIds: ['cnt-3'],
+      testOutcome: 'in_testing',
+      testResultSummary:
+        'Applied to Monday 21:00 WIB evening short story series.',
+      timesUsed: 1,
+      lastUsedDate: '2026-10-24',
+      willUseAgain: true,
+      validityDays: 90,
+      expiresAtDate: '2027-01-20',
+      updatedAt: '2026-10-24',
+    },
+    {
+      id: 'cres-4',
+      title: 'Macro Soldering Iron Pressing M3 Brass Inserts Is a High-Retention Visual Trigger',
+      sourcePlatform: 'Instagram',
+      sourceAccount: '@mechkeys.custom.id',
+      sourceUrl: 'https://www.instagram.com/reel/DA99182MechKeys/',
+      links: [
+        {
+          id: 'rlink-4a',
+          label: 'IG Reel: Macro Brass Insert ASMR (@mechkeys.custom.id)',
+          url: 'https://www.instagram.com/reel/DA99182MechKeys/',
+          category: 'Content Example',
+        },
+        {
+          id: 'rlink-4b',
+          label: 'CNC Kitchen: Heat-Set Insert Pull-Out Strength Study',
+          url: 'https://www.cnckitchen.com/blog/threaded-inserts-in-3d-prints-how-strong-are-they',
+          category: 'Theory / Framework',
+        },
+      ],
+      capturedDate: '2026-10-23',
+      pillar: '3d_marketing',
+      seriesId: 'cser-1',
+      linkedProductId: 'prod-2',
+      researchType: 'Format',
+      coreFinding:
+        'Combining an after-work mini vlog format (19:30 WIB clock check) with 2x macro shots of a 215°C soldering iron sinking brass M3 inserts into PETG keeps mechanical keyboard enthusiasts watching past 15 seconds.',
+      rawEvidence: {
+        commentQuotes:
+          '"Satisfying banget pas mur kuningan M3-nya masuk rata ke case PETG! Itu pakai suhu solder berapa derajat bang?"',
+        metricsSnapshot:
+          '89.4K Reels plays, 6,120 likes, 1,940 saves; 68% 10-second retention on macro brass insert press clip.',
+        screenshotRef: 'IMG_8488_IG_Macro_Insert_Retention.PNG (iPhone Album: Research Oct)',
+      },
+      verificationMethod: 'self_verified',
+      epistemicStatus: 'confirmed',
+      confidenceLevel: 'High',
+      openQuestion: '',
+      decision: 'test_as_content',
+      decisionReason:
+        'Keep as our signature B-roll retention anchor whenever filming hardware assembly or custom enclosures on weekday evenings.',
+      linkedContentItemIds: ['cnt-4'],
+      testOutcome: 'in_testing',
+      testResultSummary:
+        'Used in KBD-9 Macropad assembly mini vlogs; consistently triggers technical questions in comments.',
+      timesUsed: 2,
+      lastUsedDate: '2026-10-24',
+      willUseAgain: true,
+      validityDays: 60,
+      expiresAtDate: '2026-12-22',
+      updatedAt: '2026-10-24',
+    },
+    {
+      id: 'cres-5',
+      title: 'Indonesian Keyword "Pot Tanaman Siram Otomatis Meja Kerja" Has 4.2x Search Intent vs "Voronoi Planter"',
+      sourcePlatform: 'TikTok',
+      sourceAccount: 'TikTok Creator Search Insights (ID)',
+      sourceUrl: 'https://www.tiktok.com/search?q=pot+tanaman+siram+otomatis',
+      links: [
+        {
+          id: 'rlink-5a',
+          label: 'TikTok Search SERP: "pot tanaman siram otomatis"',
+          url: 'https://www.tiktok.com/search?q=pot+tanaman+siram+otomatis',
+          category: 'Platform / Case Study',
+        },
+        {
+          id: 'rlink-5b',
+          label: 'Jobs-to-Be-Done (JTBD) Search Keyword Framing Theory',
+          url: 'https://jtbd.info/2-what-is-jobs-to-be-done-jtbd-796b82081cca',
+          category: 'Theory / Framework',
+        },
+      ],
+      capturedDate: '2026-10-05',
+      pillar: '3d_marketing',
+      seriesId: 'cser-1',
+      linkedProductId: 'prod-3',
+      researchType: 'Keyword / SEO',
+      coreFinding:
+        'Non-maker indoor plant buyers search by functional benefit ("pot tanaman siram otomatis meja kerja") rather than geometry terminology ("Voronoi planter").',
+      rawEvidence: {
+        commentQuotes:
+          'Top search queries: "pot siram otomatis bisa ditinggal keluar kota", "pot tanaman meja kantor gak bocor".',
+        metricsSnapshot:
+          '42,000 monthly TikTok/Shopee ID searches with 78% content gap score in Creator Search Insights.',
+        screenshotRef: 'IMG_8102_TikTok_SEO_Planter_Keywords.PNG (iPhone Album: Research Oct)',
+      },
+      verificationMethod: 'desk_research',
+      epistemicStatus: 'hypothesis',
+      confidenceLevel: 'Medium',
+      openQuestion:
+        'Will leading the video title & on-screen text with "Pot Siram Otomatis Ditinggal Dinas 5 Hari" double non-follower search traffic?',
+      decision: 'postponed',
+      decisionReason:
+        'Saved strategy for next planter restock batch: always lead captions & on-screen hooks with Indonesian functional problem keywords rather than 3D CAD jargon.',
+      linkedContentItemIds: [],
+      timesUsed: 0,
+      willUseAgain: true,
+      validityDays: 30,
+      expiresAtDate: '2026-11-04',
+      updatedAt: '2026-10-23',
+    },
+    {
+      id: 'cres-6',
+      title: 'Fast-Cut Meme CapCut Template + Robotic TTS Voice for 3D Print Timelapses',
+      sourcePlatform: 'TikTok',
+      sourceAccount: '@viralgadget.fast',
+      sourceUrl: 'https://www.tiktok.com/@viralgadget.fast/video/7301928371',
+      links: [
+        {
+          id: 'rlink-6a',
+          label: 'Competitor Meme Cut Example (@viralgadget.fast)',
+          url: 'https://www.tiktok.com/@viralgadget.fast/video/7301928371',
+          category: 'Competitor Reference',
+        },
+      ],
+      capturedDate: '2025-11-10',
+      pillar: '3d_marketing',
+      seriesId: 'cser-1',
+      linkedProductId: 'prod-1',
+      researchType: 'Competitor',
+      coreFinding:
+        'Late-2025 viral meme cuts with robotic TTS voice-overs got cheap views from kids asking for free giveaways, but almost zero marketplace click-throughs for Rp 150k+ products.',
+      rawEvidence: {
+        commentQuotes:
+          '"Bang bagi gratis dong buat aku", "Spill template CapCut-nya bang" (0 comments asking for Tokopedia link or product specs).',
+        metricsSnapshot:
+          '540K views on competitor clip, but Tokopedia store showed only 3 units sold in 30 days (<0.01% conversion).',
+        screenshotRef: 'IMG_5109_2025_Meme_Template_Audit.PNG (Archive 2025)',
+      },
+      verificationMethod: 'desk_research',
+      epistemicStatus: 'confirmed',
+      confidenceLevel: 'High',
+      openQuestion: '',
+      decision: 'rejected',
+      decisionReason:
+        'Anti-strategy to remember: never use robotic TTS + meme templates for premium studio products—it attracts giveaway hunters instead of adult desk-setup buyers.',
+      linkedContentItemIds: [],
+      testOutcome: 'disproven',
+      testResultSummary:
+        'Trend expired & disproven for Rp 150,000+ studio products; natural iPhone voice-over converts far better.',
+      timesUsed: 0,
+      willUseAgain: false,
+      validityDays: 90,
+      expiresAtDate: '2026-02-08',
+      updatedAt: '2026-02-10',
+    },
+  ],
 };
+
 
 

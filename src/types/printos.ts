@@ -547,6 +547,123 @@ export interface WeeklyContentReview {
   nextWeekPriority: string;
 }
 
+export type ContentResearchType =
+  | 'Audience'
+  | 'Format'
+  | 'Hook'
+  | 'Competitor'
+  | 'Keyword / SEO'
+  | 'Pricing / Market';
+
+export const CONTENT_RESEARCH_TYPES: ContentResearchType[] = [
+  'Audience',
+  'Format',
+  'Hook',
+  'Competitor',
+  'Keyword / SEO',
+  'Pricing / Market',
+];
+
+export type ContentResearchPlatform =
+  | 'TikTok'
+  | 'Instagram'
+  | 'YouTube'
+  | 'Tokopedia / Shopee'
+  | 'Threads / Blog'
+  | 'Community / Forum'
+  | 'Direct Customer';
+
+export const CONTENT_RESEARCH_PLATFORMS: ContentResearchPlatform[] = [
+  'TikTok',
+  'Instagram',
+  'YouTube',
+  'Tokopedia / Shopee',
+  'Threads / Blog',
+  'Community / Forum',
+  'Direct Customer',
+];
+
+export type VerificationMethod = 'desk_research' | 'self_verified';
+
+export type EpistemicStatus = 'hypothesis' | 'confirmed';
+
+export type ConfidenceLevel = 'Low' | 'Medium' | 'High';
+
+export type ResearchDecision =
+  | 'test_as_content'
+  | 'postponed'
+  | 'rejected'
+  | 'undecided';
+
+export type ResearchTestOutcome =
+  | 'in_testing'
+  | 'proven_winner'
+  | 'inconclusive'
+  | 'disproven';
+
+export type ResearchLinkCategory =
+  | 'Content Example'
+  | 'Theory / Framework'
+  | 'Competitor Reference'
+  | 'Platform / Case Study'
+  | 'Other';
+
+export const RESEARCH_LINK_CATEGORIES: ResearchLinkCategory[] = [
+  'Content Example',
+  'Theory / Framework',
+  'Competitor Reference',
+  'Platform / Case Study',
+  'Other',
+];
+
+export interface ResearchReferenceLink {
+  id: string;
+  label: string;
+  url: string;
+  category: ResearchLinkCategory;
+}
+
+export interface ContentResearchNote {
+  id: string;
+  title: string;
+  // 1. Source & Reference Links (Content Examples, Theories, etc.)
+  sourcePlatform: ContentResearchPlatform;
+  sourceAccount: string;
+  sourceUrl?: string;
+  links?: ResearchReferenceLink[];
+  capturedDate: string; // YYYY-MM-DD
+  // 2. Classification (Klasifikasi)
+  pillar: ContentPillar;
+  seriesId?: string;
+  linkedProductId?: string;
+  researchType: ContentResearchType;
+  // 3. Core Finding & Raw Evidence (Isi Temuan Inti + Bukti Mentah)
+  coreFinding: string; // 1–2 sentences
+  rawEvidence: {
+    commentQuotes: string;
+    metricsSnapshot: string;
+    screenshotRef: string;
+  };
+  // 4. Confidence & Verification (Tingkat Keyakinan & Status Verifikasi)
+  verificationMethod: VerificationMethod;
+  epistemicStatus: EpistemicStatus;
+  confidenceLevel: ConfidenceLevel;
+  openQuestion?: string;
+  // 5. Strategy Recall Status & Memory (Self-contained strategy recall — not converted to Content Studio)
+  decision: ResearchDecision;
+  decisionReason: string;
+  linkedContentItemIds: string[];
+  testOutcome?: ResearchTestOutcome;
+  testResultSummary?: string;
+  timesUsed?: number;
+  lastUsedDate?: string; // YYYY-MM-DD
+  willUseAgain?: boolean;
+  // 6. Expiration / Trend Freshness (Penanda Riset Kedaluwarsa)
+  validityDays: number;
+  expiresAtDate: string; // YYYY-MM-DD
+  updatedAt: string; // YYYY-MM-DD
+}
+
 export interface SyncMetadata {
   schemaVersion: number;
   lastSavedRevisionId?: string;
@@ -558,6 +675,7 @@ export type ActiveBoardId =
   | 'overview'
   | 'catalog'
   | 'content'
+  | 'content_research'
   | 'tasks'
   | 'production'
   | 'inventory'
@@ -585,4 +703,6 @@ export interface PrintOSState {
   productionSessions?: ProductionSession[];
   contentSponsorships?: ContentSponsorship[];
   weeklyReviews?: WeeklyContentReview[];
+  contentResearchNotes?: ContentResearchNote[];
 }
+

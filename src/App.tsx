@@ -9,6 +9,7 @@ import {
   ContentItem,
   ContentProject,
   ContentPublication,
+  ContentResearchNote,
   ContentSeries,
   ContentSponsorship,
   ContentStage,
@@ -57,6 +58,7 @@ import {
 import { OverviewBoard } from './components/OverviewBoard';
 import { ProductCatalogBoard } from './components/ProductCatalogBoard';
 import { ContentStudioBoard } from './components/ContentStudioBoard';
+import { ContentResearchBoard } from './components/ContentResearchBoard';
 import { HermesBridgePanel } from './components/content/HermesBridgePanel';
 import { TasksCalendarBoard } from './components/TasksCalendarBoard';
 import { ProductionFleetBoard } from './components/ProductionFleetBoard';
@@ -70,6 +72,7 @@ import {
   Clapperboard,
   CloudDownload,
   CloudUpload,
+  Compass,
   DollarSign,
   Download,
   FileSpreadsheet,
@@ -859,6 +862,53 @@ export default function App() {
     }));
   };
 
+  const handleSaveContentResearchNote = (note: ContentResearchNote) => {
+    setState((prev) => {
+      const list = prev.contentResearchNotes || [];
+      const exists = list.some((n) => n.id === note.id);
+      return {
+        ...prev,
+        contentResearchNotes: exists
+          ? list.map((n) => (n.id === note.id ? note : n))
+          : [note, ...list],
+      };
+    });
+  };
+
+  const handleDeleteContentResearchNote = (id: string) => {
+    setState((prev) => ({
+      ...prev,
+      contentResearchNotes: (prev.contentResearchNotes || []).filter(
+        (n) => n.id !== id
+      ),
+    }));
+  };
+
+  const handleSpawnContentFromResearch = (
+    newItem: ContentItem,
+    updatedNote: ContentResearchNote
+  ) => {
+    setState((prev) => {
+      const prevItems = prev.contentItems || [];
+      const itemExists = prevItems.some((c) => c.id === newItem.id);
+      const nextItems = itemExists
+        ? prevItems.map((c) => (c.id === newItem.id ? newItem : c))
+        : [newItem, ...prevItems];
+
+      const prevNotes = prev.contentResearchNotes || [];
+      const noteExists = prevNotes.some((n) => n.id === updatedNote.id);
+      const nextNotes = noteExists
+        ? prevNotes.map((n) => (n.id === updatedNote.id ? updatedNote : n))
+        : [updatedNote, ...prevNotes];
+
+      return {
+        ...prev,
+        contentItems: nextItems,
+        contentResearchNotes: nextNotes,
+      };
+    });
+  };
+
   // --- Backup JSON, Import JSON & Corrupt Storage Handlers ---
 
   const handleExportWorkspaceJson = () => {
@@ -966,6 +1016,12 @@ export default function App() {
           label: 'Content Studio',
           count: state.contentItems?.length || 0,
           icon: Clapperboard,
+        },
+        {
+          id: 'content_research',
+          label: 'Content & Mktg Research',
+          count: state.contentResearchNotes?.length || 0,
+          icon: Compass,
         },
         {
           id: 'tasks',
@@ -1611,6 +1667,24 @@ export default function App() {
                 onSyncSponsorshipsToLedger={handleSyncSponsorshipsToLedger}
                 onSaveWeeklyReview={handleSaveWeeklyReview}
                 onSaveCapacityConfig={handleSaveCapacityConfig}
+              />
+            )}
+
+            {activeBoard === 'content_research' && (
+              <ContentResearchBoard
+                notes={state.contentResearchNotes || []}
+                contentItems={state.contentItems || []}
+                projects={state.contentProjects || []}
+                seriesList={state.contentSeries || []}
+                products={state.products}
+                metricSnapshots={state.metricSnapshots || []}
+                globalSearch={globalSearch}
+                onSaveResearchNote={handleSaveContentResearchNote}
+                onDeleteResearchNote={handleDeleteContentResearchNote}
+                onSpawnContentItem={handleSpawnContentFromResearch}
+                onNavigateToContentStudio={() => {
+                  setActiveBoard('content');
+                }}
               />
             )}
 

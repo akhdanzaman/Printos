@@ -561,6 +561,41 @@ export function migratePrintOSState(
             : r
         )
       : structuredClone(fallbackSeed.weeklyReviews || []),
+    contentResearchNotes: Array.isArray(parsedObj.contentResearchNotes)
+      ? parsedObj.contentResearchNotes.map((n: any) => {
+          const seedNote = (fallbackSeed.contentResearchNotes || []).find(
+            (s) => s.id === n.id
+          );
+          const hasLinks = Array.isArray(n.links) && n.links.length > 0;
+          const fallbackLinks = hasLinks
+            ? n.links
+            : seedNote?.links && seedNote.links.length > 0
+            ? structuredClone(seedNote.links)
+            : n.sourceUrl
+            ? [
+                {
+                  id: `rlink-${n.id}-1`,
+                  label: `${n.sourcePlatform || 'Reference'} (${n.sourceAccount || 'Link'})`,
+                  url: n.sourceUrl,
+                  category: 'Content Example' as const,
+                },
+              ]
+            : [];
+          return {
+            ...n,
+            links: fallbackLinks,
+            timesUsed:
+              typeof n.timesUsed === 'number'
+                ? n.timesUsed
+                : seedNote?.timesUsed ?? (n.decision === 'test_as_content' ? 1 : 0),
+            lastUsedDate: n.lastUsedDate ?? seedNote?.lastUsedDate,
+            willUseAgain:
+              typeof n.willUseAgain === 'boolean'
+                ? n.willUseAgain
+                : seedNote?.willUseAgain ?? n.decision !== 'rejected',
+          };
+        })
+      : structuredClone(fallbackSeed.contentResearchNotes || []),
   };
 
   return {
