@@ -738,6 +738,7 @@ export function serializeStateToSheetRows(state: PrintOSState): {
       'Voice-Over',
       'Brief Hook',
       'Next Action',
+      'Stage Logs',
     ],
     ...contentItems.map((c) => [
       c.id,
@@ -750,6 +751,7 @@ export function serializeStateToSheetRows(state: PrintOSState): {
       c.voiceOverEnabled ? 'Yes' : 'No',
       sanitizeSpreadsheetText(c.brief.hook),
       sanitizeSpreadsheetText(c.nextAction),
+      (c.stageHistory || []).length,
     ]),
     [],
     [
@@ -772,6 +774,40 @@ export function serializeStateToSheetRows(state: PrintOSState): {
       sanitizeSpreadsheetText(pub.actualPostUrl || ''),
       sanitizeSpreadsheetText(pub.caption),
     ]),
+    [],
+    [
+      '=== STAGE PROGRESS LOG ===',
+      'Content ID',
+      'Content Title',
+      'Stage',
+      'Actor',
+      'Started (WIB)',
+      'Completed (WIB)',
+      'Summary',
+      'Output',
+      'Override Reason',
+    ],
+    ...contentItems.flatMap((c) =>
+      (c.stageHistory || [])
+        .slice()
+        .sort((a, b) => String(a.completedAtJakarta).localeCompare(String(b.completedAtJakarta)))
+        .map((log) => [
+          c.id,
+          sanitizeSpreadsheetText(c.title),
+          log.stage,
+          log.actor,
+          log.startedAtJakarta,
+          log.completedAtJakarta,
+          sanitizeSpreadsheetText(log.summary || ''),
+          sanitizeSpreadsheetText(
+            Object.entries(log.output || {})
+              .filter(([, value]) => String(value).trim())
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(' | ')
+          ),
+          sanitizeSpreadsheetText(log.overrideReason || ''),
+        ])
+    ),
   ];
 
   return { summaryRows, productRows, taskRows, contentRows };
@@ -1222,9 +1258,9 @@ export async function saveWorkspaceToSpreadsheet(
         ranges: [
           `${APP_TAB_META}!A1:Z20`,
           `${APP_TAB_SNAPSHOTS}!1:30`,
-          `${APP_TAB_CATALOG}!A1:Z500`,
-          `${APP_TAB_TASKS}!A1:Z500`,
-          `${APP_TAB_CONTENT}!A1:Z500`,
+          `${APP_TAB_CATALOG}!A1:Z5000`,
+          `${APP_TAB_TASKS}!A1:Z5000`,
+          `${APP_TAB_CONTENT}!A1:Z5000`,
         ],
       }),
     }

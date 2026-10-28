@@ -189,7 +189,7 @@ test('migration keeps an existing stageHistory intact', async () => {
   });
   const result = migratePrintOSState(payload);
   assert.equal(result.status, 'ok');
-  const migrated = result.state!.contentItems[0];
+  const migrated = result.state!.contentItems![0]!;
   assert.equal(migrated.stageHistory?.length, 1);
   assert.equal(migrated.stageHistory?.[0].completedAtJakarta, '2026-10-28 09:40 WIB');
   assert.equal(migrated.stageHistory?.[0].actor, 'agent');

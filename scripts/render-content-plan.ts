@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
-const packPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/printos-content-pack-v1.json';
-const outPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/RENCANA-KONTEN.md';
+const packPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/printos-content-pack-v2.json';
+const outPath = 'D:/Project/hobi/Hermes/printos-creator/content-packs/RENCANA-KONTEN-v2.md';
 const s = JSON.parse(fs.readFileSync(packPath, 'utf8'));
 
 const projectById = new Map(s.contentProjects.map((p: any) => [p.id, p]));
@@ -65,7 +65,7 @@ for (const project of s.contentProjects) {
   }
 }
 
-push('## 12 ide pertama yang sudah masuk kalender');
+push('## Catatan progress');push('');push('Semua 150 item sudah punya isi untuk stage Strategy dan Idea & Research Bank (actor: agent). Stage saat ini: Brief — langkah berikutnya menulis brief per item.');push('');push('## 12 ide pertama yang sudah masuk kalender');
 push('');
 push('| Tanggal | Judul | Series |');
 push('| --- | --- | --- |');

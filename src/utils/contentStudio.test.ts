@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { PrintOSState } from '../types/printos';
 import { INITIAL_PRINTOS_STATE } from '../data/seedData';
 import {
   addDaysIso,
@@ -477,4 +478,55 @@ test('Google Sheets versioned snapshots support large multi-chunk round-trips an
   );
   assert.equal(restoredV2.revisionId, 'rev-7-large-test');
   assert.equal(restoredV2.state.contentItems?.[0].brief.hook, trickyText);
+});
+
+test('stage progress logs are written to the content tab with actor, timestamps and output', () => {
+  const base = (INITIAL_PRINTOS_STATE.contentItems || [])[0]!;
+  const withLogs: PrintOSState = {
+    ...INITIAL_PRINTOS_STATE,
+    contentItems: [
+      {
+        ...base,
+        stage: 'Brief',
+        stageHistory: [
+          {
+            id: 'log-a',
+            stage: 'Strategy' as const,
+            startedAtJakarta: '2026-10-27 20:05 WIB',
+            completedAtJakarta: '2026-10-27 20:12 WIB',
+            actor: 'agent' as const,
+            summary: 'Audiens pekerja shift pagi ditetapkan',
+            output: { objective: 'Membuktikan rute pagi lebih masuk akal', audience: 'Pekerja shift pagi' },
+          },
+          {
+            id: 'log-b',
+            stage: 'Idea & Research Bank' as const,
+            startedAtJakarta: '2026-10-27 20:12 WIB',
+            completedAtJakarta: '2026-10-27 20:26 WIB',
+            actor: 'agent' as const,
+            summary: 'Tiga hook disiapkan',
+            output: { idea: 'MRT tanpa tujuan', source: 'kunjungan 24 Okt 2026' },
+            overrideReason: '',
+          },
+        ],
+      },
+    ],
+  };
+
+  const { contentRows } = serializeStateToSheetRows(withLogs);
+  const headerIndex = contentRows.findIndex((row) => row[0] === '=== STAGE PROGRESS LOG ===');
+  assert.ok(headerIndex > 0, 'stage progress block exists');
+
+  const rows = contentRows.slice(headerIndex + 1);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0][2], 'Strategy');
+  assert.equal(rows[0][3], 'agent');
+  assert.equal(rows[0][5], '2026-10-27 20:12 WIB');
+  assert.match(String(rows[0][7]), /objective: Membuktikan rute pagi/);
+  assert.equal(rows[1][2], 'Idea & Research Bank');
+  assert.match(String(rows[1][7]), /idea: MRT tanpa tujuan/);
+
+  const contentHeader = contentRows[0];
+  assert.equal(contentHeader[contentHeader.length - 1], 'Stage Logs');
+  assert.equal(contentRows[1][contentHeader.length - 1], 2);
 });
