@@ -83,6 +83,21 @@ function requireYes() {
   }
 }
 
+function numberFlag(name) {
+  const raw = flag(name);
+  if (raw === undefined) return undefined;
+  if (raw === true) {
+    console.error(`--${name} butuh nilai.`);
+    process.exit(2);
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    console.error(`--${name} harus angka.`);
+    process.exit(2);
+  }
+  return value;
+}
+
 function printCounts(workspace) {
   const rows = {
     products: workspace.products?.length || 0,
@@ -230,6 +245,89 @@ const handlers = {
       },
     });
     console.log(JSON.stringify({ ok: true, revision: data.revision, result: data.created }, null, 2));
+  },
+
+  async 'add-research'() {
+    requireYes();
+    const title = flag('title');
+    const platform = flag('platform');
+    const type = flag('type');
+    const pillar = flag('pillar');
+    const finding = flag('finding');
+    if (!title || !platform || !type || !pillar || !finding) {
+      console.error('--title, --platform, --type, --pillar, dan --finding wajib.');
+      process.exit(2);
+    }
+    const data = await request('POST', {
+      action: 'add-research',
+      payload: {
+        title,
+        sourcePlatform: platform,
+        researchType: type,
+        pillar,
+        coreFinding: finding,
+        sourceAccount: flag('account') || undefined,
+        sourceUrl: flag('url') || undefined,
+        seriesId: flag('series') || undefined,
+        requestId: flag('request-id') || undefined,
+      },
+    });
+    console.log(JSON.stringify({ ok: true, revision: data.revision, research: data.created }, null, 2));
+  },
+
+  async 'update-research'() {
+    requireYes();
+    const researchId = flag('research-id');
+    if (!researchId) {
+      console.error('--research-id wajib.');
+      process.exit(2);
+    }
+    const payload = {
+      researchId,
+      requestId: flag('request-id') || undefined,
+    };
+    const decision = flag('decision');
+    if (decision) payload.decision = decision;
+    const outcome = flag('outcome');
+    if (outcome) payload.testOutcome = outcome;
+    const reason = flag('reason');
+    if (reason) payload.decisionReason = reason;
+
+    const data = await request('POST', { action: 'update-research', payload });
+    console.log(JSON.stringify({ ok: true, revision: data.revision, research: data.created }, null, 2));
+  },
+
+  async 'update-metric'() {
+    requireYes();
+    const contentId = flag('content-id');
+    const publicationId = flag('publication-id');
+    const channel = flag('channel');
+    const window = flag('window');
+    if (!contentId || !publicationId || !channel || !window) {
+      console.error('--content-id, --publication-id, --channel, dan --window wajib.');
+      process.exit(2);
+    }
+    const data = await request('POST', {
+      action: 'update-metric',
+      payload: {
+        contentItemId: contentId,
+        publicationId,
+        channel,
+        window,
+        requestId: flag('request-id') || undefined,
+        views: numberFlag('views'),
+        likes: numberFlag('likes'),
+        comments: numberFlag('comments'),
+        shares: numberFlag('shares'),
+        saves: numberFlag('saves'),
+        watchTimeSeconds: numberFlag('watch-time'),
+        completionRatePercent: numberFlag('completion-rate'),
+        profileVisits: numberFlag('profile-visits'),
+        productClicks: numberFlag('product-clicks'),
+        qualitativeNotes: flag('notes') || undefined,
+      },
+    });
+    console.log(JSON.stringify({ ok: true, revision: data.revision, metric: data.created }, null, 2));
   },
 };
 

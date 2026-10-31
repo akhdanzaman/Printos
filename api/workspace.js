@@ -15,6 +15,8 @@
  * This is an explicit snapshot store, not a realtime collaboration backend.
  */
 
+import { AGENT_ACTIONS, applyAgentAction } from './_actions.js';
+
 const KEY = 'printos:workspace:v1';
 
 const json = (res, status, body) => {
@@ -457,11 +459,23 @@ export default async function handler(req, res) {
         }
         item.updatedAt = stamp;
         created = { item, log };
+      } else if (AGENT_ACTIONS.includes(action)) {
+        const result = applyAgentAction(workspace, action, payload, new Date());
+        created = { ...result.created, deduped: result.deduped };
       } else {
         return json(res, 400, {
           ok: false,
           error: 'action tidak dikenal',
-          allowed: ['add-task', 'add-content', 'add-publication', 'move-content-stage', 'log-stage'],
+          allowed: [
+            'add-task',
+            'add-content',
+            'add-publication',
+            'move-content-stage',
+            'log-stage',
+            'add-research',
+            'update-research',
+            'update-metric',
+          ],
         });
       }
 

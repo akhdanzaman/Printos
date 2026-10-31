@@ -91,6 +91,29 @@ node tools/printos-hermes.mjs log-stage --content-id cnt-… --stage Brief \
 
 Semua perintah tulis menolak jalan tanpa `--yes`. Itu lapisan izin kedua, selain kamu yang memang harus menyuruh Hermes.
 
+### Aksi bertipe (Phase 2)
+
+Tiga aksi kecil yang hanya menyentuh satu koleksi, jadi agent tidak perlu mengirim ulang seluruh
+workspace:
+
+| Aksi | Payload inti | Koleksi |
+|---|---|---|
+| `add-research` | `title`, `sourcePlatform`, `researchType`, `pillar`, `coreFinding` | `contentResearchNotes` |
+| `update-research` | `researchId` + field yang berubah (`decision`, `testOutcome`, `timesUsed`, …) | `contentResearchNotes` |
+| `update-metric` | `contentItemId`, `publicationId`, `channel`, `window`, angka metrik | `metricSnapshots` |
+
+Kirim `requestId` (string apa pun yang unik per percobaan) dan pengulangan request yang sama tidak
+akan menduplikasi data: server menyimpan ledger `bridgeRequests` (maksimal 200 entri) dan
+mengembalikan record yang sudah ada dengan `deduped: true`.
+
+```bash
+node tools/printos-hermes.mjs add-research --title "Komentar minta rute malam" \
+  --platform TikTok --type Audience --pillar personal --finding "Penonton menanyakan rute malam" \
+  --request-id req-2026-10-31-01 --yes
+```
+
+Angka metrik boleh `null` (belum diketahui) dan tidak diubah menjadi 0.
+
 ### Stage log (gembok per tahap)
 
 Setiap stage punya output wajib, dan `log-stage` mencatatnya:

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/utils/calculations.test.ts src/utils/contentStudio.test.ts src/utils/contentStageGates.test.ts src/utils/syncEngine.test.ts"
+    "test": "tsx --test src/utils/calculations.test.ts src/utils/contentStudio.test.ts src/utils/contentStageGates.test.ts src/utils/syncEngine.test.ts src/utils/agentActions.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
