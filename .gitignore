@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 .vercel
+
+# CommandCode local state
+.commandcode/

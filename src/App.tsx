@@ -43,6 +43,8 @@ import {
   syncContentTasksIdempotent,
   syncSponsorshipToFinancialsIdempotent,
 } from './utils/contentStudio';
+import { useAutoSync } from './hooks/useAutoSync';
+import { SyncStatusBar } from './components/SyncStatusBar';
 import {
   checkRemoteSpreadsheetRevision,
   completeRedirectSignIn,
@@ -138,6 +140,16 @@ export default function App() {
       }, 0);
     }
     return structuredClone(INITIAL_PRINTOS_STATE);
+  });
+
+  const autoSync = useAutoSync({
+    state,
+    onRemote: (workspace) => {
+      const migration = migratePrintOSState(JSON.stringify(workspace), INITIAL_PRINTOS_STATE);
+      if (migration.status === 'ok' && migration.state) {
+        setState(migration.state);
+      }
+    },
   });
 
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -1488,6 +1500,12 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <SyncStatusBar
+                snapshot={autoSync.snapshot}
+                onToggle={autoSync.setEnabled}
+                onTakeRemote={autoSync.takeRemote}
+                onKeepLocal={autoSync.keepLocal}
+              />
               {/* Search visible on BOTH mobile & desktop */}
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />

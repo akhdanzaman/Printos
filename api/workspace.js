@@ -330,6 +330,23 @@ export default async function handler(req, res) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
       assertWorkspace(body.workspace);
       const previous = await readStore().catch(() => null);
+      const currentRevision = previous?.revision || 0;
+
+      // Optimistic concurrency: a client that knows which revision it edited must not
+      // overwrite a newer one. `force` is the explicit human override.
+      const hasExpected =
+        body.expectedRevision !== undefined &&
+        body.expectedRevision !== null &&
+        body.expectedRevision !== '';
+      if (body.force !== true && hasExpected && Number(body.expectedRevision) !== currentRevision) {
+        return json(res, 409, {
+          ok: false,
+          error: 'REVISION_CONFLICT',
+          currentRevision,
+          updatedAt: previous?.updatedAt || null,
+        });
+      }
+
       const store = {
         revision: (previous?.revision || 0) + 1,
         updatedAt: new Date().toISOString(),
